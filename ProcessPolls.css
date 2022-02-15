@@ -1,0 +1,25 @@
+body.ProcessPolls .poll-admin-links {
+	margin-top: 20px;
+}
+
+body.ProcessPolls dl.uk-description-list {
+	line-height: 1.5rem;
+}
+
+body.ProcessPolls .uk-description-list > dt {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 0.7rem;
+}
+
+body.ProcessPolls .uk-description-list > dt a {
+	vertical-align:baseline;
+}
+
+body.ProcessPolls .description, .pw-description {
+    color: #354b60 !important;
+}
+
+body.ProcessPolls .InputfieldCheckbox .InputfieldContent label {
+    font-size: 16px;
+}
