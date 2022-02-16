@@ -405,10 +405,10 @@ class ProcessPolls extends Process {
 
 		// check date range
 		if(strtotime($data['start']) > time()) {
-			return sprintf($this->_('The poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $start, $end);
+			return sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $start, $end);
 		}
 		if(strtotime($data['end']) < time()) {
-			return sprintf($this->_('The poll / election ended on %s. Participation is no longer possible.'), $end);
+			return sprintf($this->_('This poll / election ended on %s. Participation is no longer possible.'), $end);
 		}
 
 		// check access (backend process only)
@@ -447,7 +447,7 @@ class ProcessPolls extends Process {
 		}
 
 		else if ($data['anonymus']) $info[] = $this->_("Good bye!");
-		else $info[] = sprintf($this->_("The poll / election ends on %s. You can make changes to your entries up to this date. Reload the page or use the browser's 'Back' button to return to the input form."), $end);
+		else $info[] = sprintf($this->_("This poll / election ends on %s. You can make changes to your entries up to this date. Reload the page or use the browser's 'Back' button to return to the input form."), $end);
 		$info = implode(' ', $info);
 		$this->form->successMessage = sprintf($this->_('Thank you for taking part in "%1$s". %2$s'), $data['title'], $info);
 
@@ -515,7 +515,7 @@ class ProcessPolls extends Process {
 				if ($page->id) return $this->form->render($page->id);
 			}
 		}
-		if (!$this->form->template->hasField('body') && $data['summary']) $this->wire('page')->body = "<p class='description'>" . $data['summary'] . "</p>";
+		if ($data['summary']) $this->wire('page')->body = "<p class='description'>" . $data['summary'] . "</p>";
 		// otherwise blank form
 		return $this->form->render();
 	}	
