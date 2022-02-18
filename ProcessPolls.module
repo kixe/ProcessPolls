@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.0.6 2022-02-16
+ * @version 1.0.7 2022-02-18
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -26,6 +26,7 @@
  * @since 1.0.4 - create log entry on token manipulation error - 2022-02-07
  * @since 1.0.5 - controll permission via method - 2022-02-08
  * @since 1.0.6 - updated requirements - 2022-02-16
+ * @since 1.0.7 - security update: token check via FormProcessor::validator(), safer SQL-Statements - 2022-02-18
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -115,8 +116,8 @@ class ProcessPolls extends Process {
 		wire('config')->scripts->add($this->config->urls('JqueryCore') . 'jquery.cookie.min.js');
 		wire('config')->scripts->add($this->config->urls('ProcessPolls') . 'ProcessPolls.js');
 		$this->polls = $this->getDataArray("SELECT * FROM process_poll", 'pages_id');
-		$this->isAdmin = $this->wire('user')->hasPermission('poll-admin')? true : false;
-		$this->isMonitor = $this->wire('user')->hasPermission('poll-monitor')? true : false;
+		$this->isAdmin = wire('user')->hasPermission('poll-admin')? true : false;
+		$this->isMonitor = wire('user')->hasPermission('poll-monitor')? true : false;
 
 		$getID = (int) $this->input->get('id');
 		$postID = (int) $this->input->post('id');
@@ -150,7 +151,7 @@ class ProcessPolls extends Process {
 				$f = $this->modules->get('InputfieldCheckbox');
 				$f->attr('id+name', 'ccop'); 
 				$f->attr('value', $this->id);
-				$f->attr('data-user-id', $this->wire('user')->id);
+				$f->attr('data-user-id', wire('user')->id);
 				$copPage = wire('pages')->get($data['cop_id']);
 				$copTargetLabel = __('conditions of participation');
 				$copTarget = strpos($copPage->url, '?')? "$copPage->url&amp;modal=1" : "$copPage->url?modal=1";
@@ -170,13 +171,52 @@ class ProcessPolls extends Process {
 			});
 		}
 
+		wire()->addHookAfter('FormProcessor::validator', function($e) use ($data) {
+
+			// is this poll token based?
+			if(empty($data)) $errors[] = 1;
+			else if (!isset($data['require_token'])) $errors[] = 2;
+			else if ($data['require_token'] === '0') return true;
+
+			$token_by_post = wire('sanitizer')->varName($e->object->hiddenFields['token']);
+			$token_by_get = wire('sanitizer')->varName(wire('input')->get->token);
+
+			if (empty($token_by_get)) $errors[] = 3;
+			if (empty($token_by_post)) $errors[] = 4;
+			if ($token_by_post !== $token_by_get) $errors[] = 5;
+
+			$userID = $this->isValidToken($token_by_post);
+			if ($userID === false) $errors[] = 6;			
+			if ($userID != wire('user')->id) $errors[] = 7;
+
+			if (!empty($errors)) {
+				$errors = implode(', ', $errors);
+				$this->countInvalidRequests();
+				$e->object->error("Error [$errors]");
+				return false;				
+			}
+		});
+
 		// invalidate the used token from the database when the form has been processed successfully
 		// and a new page has been saved
-		wire()->addHookAfter('FormProcessor::success', function($e) {
-			if (empty($e->object->hiddenFields['token'])) return;
-			$page = $this->wire('pages')->get($e->arguments[0]);
-			$this->message("PVC-$page->id-$page->created-" . $e->object->hiddenFields['token']);
-			$this->invalidateToken($e->object->hiddenFields['token']);
+		wire()->addHookAfter('FormProcessor::success', function($e) use ($data) {
+
+			// is this poll token based?
+			if(empty($data)) throw new WireException("Missing var \$data");
+			else if (!isset($data['require_token'])) throw new WireException("Missing var \$data[require_token]");
+			else if ($data['require_token'] === '0') return true;
+
+			$token_by_post = wire('sanitizer')->varName($e->object->hiddenFields['token']);
+			$token_by_get = wire('sanitizer')->varName(wire('input')->get->token);
+
+			if (empty($token_by_get)) throw new WireException("Missing var \$_GET[token]");
+			if (empty($token_by_post)) throw new WireException("Missing var \$_POST[token]");
+			if ($token_by_post !== $token_by_get) throw new WireException("var \$_POST[token] does not match var \$_GET[token]");
+
+			$page = wire('pages')->get($e->arguments[0]);
+			$this->message("PVC-$page->id-$page->created-$token_by_post");
+			$userID = $this->isValidToken($token_by_post);
+			$this->invalidateToken($token_by_post);
 		});
 
 		// remove poll from DB if Parent page has been trashed
@@ -214,7 +254,7 @@ class ProcessPolls extends Process {
 		}
 		if (!$this->id) throw new WireException($this->_('Missing GET parameter: ID'));
 		else {
-			$parent = $this->wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
+			$parent = wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
 			if($parent instanceof NullPage) {
 				throw new WireException($this->_("The requested poll / election does not exist in page tree.")); 
 				return false;
@@ -249,10 +289,10 @@ class ProcessPolls extends Process {
 	 * 
 	 */
 	public function executeTokens() {
-		if (!$this->wire('config')->ajax) $this->wire('session')->redirect('../');
+		if (!wire('config')->ajax) wire('session')->redirect('../');
 		if (!$this->id) throw new WireException($this->_('Missing GET parameter: ID'));
-		$limit = !empty($this->wire('input')->post->limit)? $this->wire('input')->post->limit : self::MAX_NUM_TOKEN;
-		$offset = !empty($this->wire('input')->post->offset)? $this->wire('input')->post->offset : 0;
+		$limit = !empty(wire('input')->post->limit)? wire('input')->post->limit : self::MAX_NUM_TOKEN;
+		$offset = !empty(wire('input')->post->offset)? wire('input')->post->offset : 0;
 		$data = $this->getTokens($this->id, $limit, $offset);
 		$rows = $this->buildTokenTable($data, true);
 		$next = $offset + count($data);
@@ -277,7 +317,7 @@ class ProcessPolls extends Process {
 		$form = $this->buildForm();
 		if(!$this->input->post->save_poll) return $form->render();
 		else $this->save($form, false);
-		$this->wire('session')->redirect('../');
+		wire('session')->redirect('../');
 	}
 
 	/**
@@ -292,7 +332,7 @@ class ProcessPolls extends Process {
 		}
 		if (!$this->id) throw new WireException($this->_('Missing GET parameter: ID'));
 		else {
-			$parent = $this->wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
+			$parent = wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
 			if($parent instanceof NullPage) {
 				throw new WireException($this->_("The requested poll / election does not exist in page tree.")); 
 				return false;
@@ -304,10 +344,10 @@ class ProcessPolls extends Process {
 		}
 		$this->fuel->breadcrumbs->add(new Breadcrumb('../', $this->_('Polls & Elections')));
 
-		if (!empty($this->wire('input')->get->createTokens)) {
-			$num = (int) $this->wire('input')->get->createTokens;
+		if (!empty(wire('input')->get->createTokens)) {
+			$num = (int) wire('input')->get->createTokens;
 			$tokens = $this->createTokens($this->id, null, $num);
-			$this->wire('session')->redirect("./?id=$this->id");
+			wire('session')->redirect("./?id=$this->id");
 		}
 
 		$form = $this->buildForm($this->id);
@@ -333,7 +373,7 @@ class ProcessPolls extends Process {
 		}
 		if (!$this->id) throw new WireException($this->_('Missing GET parameter: ID'));
 		else {
-			$parent = $this->wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
+			$parent = wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
 			if($parent instanceof NullPage) {
 				throw new WireException($this->_("The requested poll / election does not exist in page tree.")); 
 			}
@@ -342,9 +382,9 @@ class ProcessPolls extends Process {
 			}
 		}
 
-		if ($this->wire('input')->post->submit_delete) {
+		if (wire('input')->post->submit_delete) {
 			$this->save();
-			$this->wire('session')->redirect('../');
+			wire('session')->redirect('../');
 		}
 		if (empty($this->polls[$this->id])) {
 			throw new WireException($this->_('Missing GET parameter: ID'));
@@ -389,7 +429,7 @@ class ProcessPolls extends Process {
 	public function executeParticipate() {
 		if (!$this->id) throw new WireException($this->_('Missing GET parameter: id'));
 		else {
-			$parent = $this->wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
+			$parent = wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
 			if($parent instanceof NullPage) {
 				throw new WireException($this->_("The requested poll / election does not exist in page tree.")); 
 			}
@@ -401,7 +441,7 @@ class ProcessPolls extends Process {
 		$data = $this->polls[$this->id];
 		$start = strftime($this->_('%Y-%m-%d'), strtotime($data['start']));
 		$end = strftime($this->_('%Y-%m-%d'), strtotime($data['end']));
-		$user_id = $this->wire('user')->id;
+		$user_id = wire('user')->id;
 
 		// check date range
 		if(strtotime($data['start']) > time()) {
@@ -413,12 +453,12 @@ class ProcessPolls extends Process {
 
 		// check access (backend process only)
 		if (wire('config')->admin && !empty($data['selector'])) {
-			$allowedUsers = $this->wire('users')->findIDs($data['selector']);
-			$userID = $this->wire('user')->id;
+			$allowedUsers = wire('users')->findIDs($data['selector']);
+			$userID = wire('user')->id;
 			if (!in_array($userID, $allowedUsers)) throw new ProcessControllerPermissionException($this->_('Permission to participate in poll / election not granted.'));
 		}
 
-		$template = $this->wire('templates')->get($data['template']);
+		$template = wire('templates')->get($data['template']);
 		if (!$template) throw new WireException($this->_('Template could not be loaded'));
 
 		// add headline & breadcrumb (backend process only)
@@ -469,11 +509,11 @@ class ProcessPolls extends Process {
 				$this->renderInvalidRequestWarning();
 
 				// log
-				if (!$this->wire('user')->isLoggedin()) $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist. IP: " . $_SERVER['REMOTE_ADDR'];
+				if (!wire('user')->isLoggedin()) $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist. IP: " . $_SERVER['REMOTE_ADDR'];
 				else if (!empty($userToken['token'])) $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist and does not match token [$userToken[token]] assigned to current user [#$user_id]. IP: " . $_SERVER['REMOTE_ADDR'];
 				else $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist. No token assigned to current user [#$user_id]. IP: " . $_SERVER['REMOTE_ADDR'];
 
-				$this->wire('log')->save('polls-error', $text);
+				wire('log')->save('polls-error', $text);
 
 				return "<p>" . $this->_('The token passed does not exist or is invalid. Multiple participation with the same token is not permitted. Tokens are tied to the logged-in user and are non-transferrable.') . "</p>";
 			}
@@ -488,7 +528,7 @@ class ProcessPolls extends Process {
 				
 				// log
 				$text = "Invalid Request [#$this->id]. Submitted token [$token] is valid but does not match token [$userToken[token]] assigned to current user [#$user_id]. Token [$token] has been deleted. User has been redirected with assigned token. IP: " . $_SERVER['REMOTE_ADDR'];
-				$this->wire('log')->save('polls-error', $text);
+				wire('log')->save('polls-error', $text);
 
 				// redirect to user assigned token
 				$redirect = "./?id=$this->id&token=" . $userToken['token'];
@@ -511,11 +551,11 @@ class ProcessPolls extends Process {
 		// check if user already participated in the poll (backend process only)
 		else {
 			if (wire('config')->admin) {
-				$page = $this->wire('pages')->get("created_users_id=$user_id,parent=$parent,template=$template,include=all");
+				$page = wire('pages')->get("created_users_id=$user_id,parent=$parent,template=$template,include=all");
 				if ($page->id) return $this->form->render($page->id);
 			}
 		}
-		if ($data['summary']) $this->wire('page')->body = "<p class='description'>" . $data['summary'] . "</p>";
+		if ($data['summary']) wire('page')->body = "<p class='description'>" . $data['summary'] . "</p>";
 		// otherwise blank form
 		return $this->form->render();
 	}	
@@ -535,8 +575,8 @@ class ProcessPolls extends Process {
 			'disabledClass' => 'ui-priority-secondary',
 			'showIcon' => true, 
 		);
-		// $settings = $this->wire('config')->ProcessPoll;
-		$settings = $this->wire('config')->ProcessList;
+		// $settings = wire('config')->ProcessPoll;
+		$settings = wire('config')->ProcessList;
 		if(!is_array($settings)) $settings = array();
 		$settings = array_merge($defaults, $settings);
 		$out = "\n<dl class='$settings[dlClass]'>";
@@ -585,8 +625,8 @@ class ProcessPolls extends Process {
 		
 			// check access
 			if (!empty($data['selector'])) {
-				$allowedUsers = $this->wire('users')->findIDs($data['selector']);
-				$userID = $this->wire('user')->id;
+				$allowedUsers = wire('users')->findIDs($data['selector']);
+				$userID = wire('user')->id;
 				if (!$this->isAdmin && !in_array($userID, $allowedUsers)) continue;
 			}
 		
@@ -613,7 +653,7 @@ class ProcessPolls extends Process {
 				$summary = $data['summary']; // something with date start end??
 			} else $summary = '';
 					
-			$summary = $this->wire('sanitizer')->entities1($summary);
+			$summary = wire('sanitizer')->entities1($summary);
 			
 			$dtClass = trim($dtClass);
 			$ddClass = trim($ddClass);
@@ -622,7 +662,7 @@ class ProcessPolls extends Process {
 
 			if ($data['require_token']) {
 				// check if user has already assigned a token, provide same user token to get the right messages after click
-				$userToken = $this->getTokenByUser($parent->id, $this->wire('user')->id);		
+				$userToken = $this->getTokenByUser($parent->id, wire('user')->id);		
 				if (!empty($userToken['token'])) {
 					$url .= '&amp;token=' . $userToken['token'];
 				}
@@ -635,7 +675,7 @@ class ProcessPolls extends Process {
 						$token = $unusedTokens[0]['token'];
 						$this->assignToken($token);
 					}
-					else $token = $this->createTokens($parent->id, $this->wire('user')->id)[0];
+					else $token = $this->createTokens($parent->id, wire('user')->id)[0];
 					$url .= '&amp;token=' . $token;
 				}
 			}
@@ -717,7 +757,7 @@ class ProcessPolls extends Process {
 		$form->add($f);
 
  		/** @var InputfieldDatetime $f */
-		$f = $this->wire('modules')->get('InputfieldDatetime');
+		$f = wire('modules')->get('InputfieldDatetime');
 		$f->attr('name', 'start');
 		$f->attr('value', $data['start']);
 		$f->label = __('Start');
@@ -730,7 +770,7 @@ class ProcessPolls extends Process {
 		$form->add($f);
 	
 		/** @var InputfieldDatetime $f */
-		$f = $this->wire('modules')->get('InputfieldDatetime');
+		$f = wire('modules')->get('InputfieldDatetime');
 		$f->attr('name', 'end');
 		$f->attr('value', $data['end']);
 		$f->icon = 'calendar';
@@ -743,7 +783,7 @@ class ProcessPolls extends Process {
 		$form->add($f);
 
 		/** @var InputfieldSelect $field */
-		$f = $this->wire('modules')->get('InputfieldSelect');
+		$f = wire('modules')->get('InputfieldSelect');
 		$f->attr('id+name', 'template');
 		$f->attr('value', $data['template']);
 		$f->required = true;
@@ -776,7 +816,7 @@ class ProcessPolls extends Process {
 		$form->add($f);
 
 		/** @var InputfieldSelector $f */
-		$f = $this->wire('modules')->get('InputfieldSelector');
+		$f = wire('modules')->get('InputfieldSelector');
 		$f->attr('id+name', 'selector'); 
 		$f->label = $this->_('Users who are allowed to participate in this poll / election');
 		$f->set('addLabel', $this->_('Add Filter'));
@@ -799,7 +839,7 @@ class ProcessPolls extends Process {
 		$form->add($f);
 
 		// conditions of participation
-		$f = $this->wire('modules')->get('InputfieldPageListSelect');
+		$f = wire('modules')->get('InputfieldPageListSelect');
 		// $f->set('parent_id', 1);
 		$f->attr('id+name', 'cop_id'); 
 		$f->value = !empty($data['cop_id'])? (int) $data['cop_id'] : 0;
@@ -810,7 +850,7 @@ class ProcessPolls extends Process {
 		$f->collapsed = $collapsed;
 		$form->add($f);
 
-		$f = $this->wire('modules')->get('InputfieldCheckbox');
+		$f = wire('modules')->get('InputfieldCheckbox');
 		$f->attr('id+name', 'anonymus');
 		$f->attr('value', 1);
 		$f->attr('checked', $data['anonymus'] ? 'checked' : '');
@@ -820,7 +860,7 @@ class ProcessPolls extends Process {
 		$f->collapsed = $collapsed;
 		$form->add($f);
 
-		$f = $this->wire('modules')->get('InputfieldCheckbox');
+		$f = wire('modules')->get('InputfieldCheckbox');
 		$f->attr('id+name', 'require_token');
 		$f->attr('value', 1);
 		$f->attr('checked', $data['require_token'] ? 'checked' : '');
@@ -833,7 +873,7 @@ class ProcessPolls extends Process {
 
 		if ($this->isAdmin && $id) {
 			$form->action = "./?id=$id";
-			$f = $this->wire('modules')->get('InputfieldMarkup');
+			$f = wire('modules')->get('InputfieldMarkup');
 			$f->label = $this->_('Tokens');
 			if ($this->isAdmin) $f->showIf = "require_token=1";
 
@@ -842,7 +882,7 @@ class ProcessPolls extends Process {
 
 			$numTokens = $this->getNumTokens($id);
 			if ($numTokens['total'] > self::MAX_NUM_TOKEN) {
-				$ajaxButton = $this->wire('modules')->get('InputfieldButton');
+				$ajaxButton = wire('modules')->get('InputfieldButton');
 				$ajaxButton->attr('value', $this->_('Load more ...')); 
 				$ajaxButton->attr('data-total', $numTokens['total']);
 				$ajaxButton->attr('data-limit', self::MAX_NUM_TOKEN);
@@ -859,7 +899,7 @@ class ProcessPolls extends Process {
 		if ($this->isAdmin) {
 
 			/** @var InputfieldSubmit $f */
-			$f = $this->wire('modules')->get("InputfieldSubmit");
+			$f = wire('modules')->get("InputfieldSubmit");
 			$f->skipLabel = Inputfield::skipLabelHeader;
 			$f->class .= ' head_button_clone';
 			$f->value = 'Save';
@@ -867,7 +907,7 @@ class ProcessPolls extends Process {
 			$form->add($f);
 
 			if ($id) {		
-				$f = $this->wire('modules')->get('InputfieldButton');
+				$f = wire('modules')->get('InputfieldButton');
 				$f->value = $this->_('Create Tokens');
 				$f->class .= ' ui-priority-secondary';
 				// $f->aclass = 'ignore-active-tab'; // wrapper
@@ -888,13 +928,17 @@ class ProcessPolls extends Process {
 	/**
 	 * Check if $token is present in DB and not already used
 	 * @param string $token
-	 * @return bool
-	 *
+	 * @return bool|int
+	 * returns user_id if assigned, true if valid
+	 * 
 	 */
 	private function isValidToken($token) {
 		$data = $this->getDataArray("SELECT used, user_id, INET6_NTOA(UNHEX(ip)) FROM process_poll_token WHERE token='$token' AND pages_id='$this->id' LIMIT 1;");
 		// token exists and has not been used yet
-		if (!empty($data[0]) && empty($data[0]['used'])) return true;
+		if (!empty($data[0]) && empty($data[0]['used'])) {
+			if (!empty($data[0]['user_id'])) return $data[0]['user_id'];
+			return true;
+		}
 		if (!$this->countInvalidRequests()) throw new WireException('The number of unauthorized requests (usage of invalid token) has been exceeded.');
 		return false;
 	}
@@ -935,10 +979,10 @@ class ProcessPolls extends Process {
 	 *
 	 */
 	private function invalidateToken($token) {
-		$sql = "UPDATE process_poll_token SET used=1, user_id=:user_id, ip=HEX(INET6_ATON(:ip)) WHERE token=:token LIMIT 1;";
+		$sql = "UPDATE process_poll_token SET used=1, user_id=:user_id, ip=HEX(INET6_ATON(:ip)) WHERE token=:token AND used IS NULL AND (user_id IS NULL OR user_id=:user_id) AND ip IS NULL LIMIT 1;";
 		$sth = wire('database')->prepare($sql);
 		$sth->bindValue(":ip", wire('session')->getIP());
-		$sth->bindValue(":user_id", $this->wire('user')->id);
+		$sth->bindValue(":user_id", wire('user')->id);
 		$sth->bindValue(":token", $token); 
 		$result = $sth->execute();
 		if ($result) return true;
@@ -952,10 +996,10 @@ class ProcessPolls extends Process {
 	 *
 	 */
 	private function assignToken($token) {
-		if (!$this->wire('user')->isLoggedin()) return false;
-		$sql = "UPDATE process_poll_token SET user_id=:user_id WHERE token=:token LIMIT 1;";
+		if (!wire('user')->isLoggedin()) return false;
+		$sql = "UPDATE process_poll_token SET user_id=:user_id WHERE token=:token AND used IS NULL AND user_id IS NULL AND ip IS NULL LIMIT 1;";
 		$sth = wire('database')->prepare($sql);
-		$sth->bindValue(":user_id", $this->wire('user')->id);
+		$sth->bindValue(":user_id", wire('user')->id);
 		$sth->bindValue(":token", $token); 
 		$result = $sth->execute();
 		if ($result) return true;
@@ -991,7 +1035,7 @@ class ProcessPolls extends Process {
 	}
 
 	/**
-	 * get all valid tokens related to specific poll
+	 * get tokens related to specific poll
 	 * @param int $poll (page ID)
 	 * @param int $limit
 	 * @param int $offset
@@ -1036,7 +1080,7 @@ class ProcessPolls extends Process {
 	private function countInvalidRequests($getNum = false) {
 		if (empty($_SERVER['REMOTE_ADDR'])) return false;
 		$ip = crypt($_SERVER['REMOTE_ADDR'], 12);
-		$cache = $this->wire('cache');
+		$cache = wire('cache');
 		$cache->maintenance(); // remove expired caches
 		$count = $cache->get("ProcessPolls_CIR_$ip", time() - WireCache::expireDaily);
 		if (empty($count)) $count = 0;
@@ -1065,7 +1109,7 @@ class ProcessPolls extends Process {
 	 *
 	 */
 	private function getDataArray($sql, $key = null) {
-		$sth = $this->wire('database')->prepare($sql);
+		$sth = wire('database')->prepare($sql);
 		if (!$sth) $error =  "PDO: ";
 		else if (!$sth->execute()) $error = "PDOStatement: ";
 
@@ -1098,18 +1142,18 @@ class ProcessPolls extends Process {
 	public function getProcessPage() {
 		// $page = parent::getProcessPage(); // does not work if bootstrapped
 
-		$page = $this->wire('page'); 
+		$page = wire('page'); 
 		if($page && $page->process === $this) return $page;
-		$moduleID = $this->wire('modules')->getModuleID($this);
-		if($moduleID) $page = $this->wire('pages')->get("process=$moduleID,include=all"); 
+		$moduleID = wire('modules')->getModuleID($this);
+		if($moduleID) $page = wire('pages')->get("process=$moduleID,include=all"); 
 
 		if(!$page->id) {
 			$page = new Page();
-			$page->parent = $this->wire('pages')->get($this->wire('config')->adminRootPageID);
+			$page->parent = wire('pages')->get(wire('config')->adminRootPageID);
 			$page->template = 'admin';
 			$page->name = 'process_poll';
-			if ($this->wire('modules')->isInstalled('LanguageSupportFields') && $this->wire('user')->language->isDefault() == false) {
-				$page->setLanguageValue($this->wire('languages')->getDefault(), 'title', $page->title);			
+			if (wire('modules')->isInstalled('LanguageSupportFields') && wire('user')->language->isDefault() == false) {
+				$page->setLanguageValue(wire('languages')->getDefault(), 'title', $page->title);			
 			} else $page->title = 'Polls & Elections';
 			$page->process = $this;
 			$page->save();
@@ -1138,20 +1182,20 @@ class ProcessPolls extends Process {
 	 *
 	 */
 	private function save($form = null, $update = false) {
-		$database = $this->wire('database');
-		$userID = $this->wire('user')->id;
-		$id = (int) $this->wire('input')->get->id;
+		$database = wire('database');
+		$userID = wire('user')->id;
+		$id = (int) wire('input')->get->id;
 
-		if(!$form) {
+		if($id && !$form) {
 			$sql = "DELETE p, t FROM process_poll p LEFT JOIN process_poll_token t ON p.pages_id=t.pages_id WHERE p.pages_id=:delete;";
 			$query = $database->prepare($sql);
 			$query->bindValue(":delete", $id); 
 			$result = $query->execute();
 			if ($result) {
-				$cache = $this->wire('cache');
+				$cache = wire('cache');
 				$cache->delete("ProcessPolls_CIR_$id");
 				$this->message(sprintf($this->_('Successfully deleted poll-%s'), $id));
-				$page = $this->wire('pages')->get($id);
+				$page = wire('pages')->get($id);
 				if ($page->id) $page->delete(true);
 				return $form;
 			} else {
@@ -1175,7 +1219,7 @@ class ProcessPolls extends Process {
 			$sql .= " `process_poll` SET start=:start, end=:end, require_token=:require_token, anonymus=:anonymus, template=:template, title=:title, summary=:summary, selector=:selector, cop_id=:cop_id, modified_users_id=:modified_users_id";
 			$sql .= $update? ', modified=:modified WHERE ' : ', created_users_id=:created_users_id, ';
 			$sql .= "pages_id=:pages_id;";
-			if (empty($this->input->post->require_token)) $sql .= "DELETE FROM process_poll_token WHERE pages_id=:pages_id;";
+			// if (empty($this->input->post->require_token)) $sql .= "DELETE FROM process_poll_token WHERE pages_id=:pages_id;";
 
 			$query = $database->prepare($sql);
 
@@ -1219,7 +1263,7 @@ class ProcessPolls extends Process {
 	public function ___install() {
 		$page = $this->getProcessPage();
 		$this->message(sprintf($this->_('Installed to %s'), $page->path));
-		$engine = $this->wire('config')->dbEngine;
+		$engine = wire('config')->dbEngine;
 
 		$sql = <<< _END
 		CREATE TABLE process_poll (
@@ -1252,10 +1296,10 @@ _END;
 	}
 
 	public function ___uninstall() {
-		$cache = $this->wire('cache');
+		$cache = wire('cache');
 		$cache->delete("ProcessPolls_CIR_*");
-		$moduleID = $this->wire('modules')->getModuleID($this);
-		$pages = $this->wire('pages')->find("template=admin,process=$moduleID,include=all");
+		$moduleID = wire('modules')->getModuleID($this);
+		$pages = wire('pages')->find("template=admin,process=$moduleID,include=all");
 		foreach ($pages as $page) $page->delete(true);
 		$this->database->query("DROP TABLE IF EXISTS process_poll;DROP TABLE IF EXISTS process_poll_token;");
 	}
