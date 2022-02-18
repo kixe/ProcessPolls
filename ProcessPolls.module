@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.0.7 2022-02-18
+ * @version 1.0.8 2022-02-18
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -27,6 +27,7 @@
  * @since 1.0.5 - controll permission via method - 2022-02-08
  * @since 1.0.6 - updated requirements - 2022-02-16
  * @since 1.0.7 - security update: token check via FormProcessor::validator(), safer SQL-Statements - 2022-02-18
+ * @since 1.0.8 - fixed sanitizer bug - 2022-02-18
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -38,7 +39,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 106, 
+			'version' => 108, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -178,8 +179,8 @@ class ProcessPolls extends Process {
 			else if (!isset($data['require_token'])) $errors[] = 2;
 			else if ($data['require_token'] === '0') return true;
 
-			$token_by_post = wire('sanitizer')->varName($e->object->hiddenFields['token']);
-			$token_by_get = wire('sanitizer')->varName(wire('input')->get->token);
+			$token_by_post = wire('sanitizer')->alphanumeric($e->object->hiddenFields['token'],false,16);
+			$token_by_get = wire('sanitizer')->alphanumeric(wire('input')->get->token,false,16);
 
 			if (empty($token_by_get)) $errors[] = 3;
 			if (empty($token_by_post)) $errors[] = 4;
@@ -206,8 +207,8 @@ class ProcessPolls extends Process {
 			else if (!isset($data['require_token'])) throw new WireException("Missing var \$data[require_token]");
 			else if ($data['require_token'] === '0') return true;
 
-			$token_by_post = wire('sanitizer')->varName($e->object->hiddenFields['token']);
-			$token_by_get = wire('sanitizer')->varName(wire('input')->get->token);
+			$token_by_post = wire('sanitizer')->alphanumeric($e->object->hiddenFields['token'],false,16);
+			$token_by_get = wire('sanitizer')->alphanumeric(wire('input')->get->token,false,16);
 
 			if (empty($token_by_get)) throw new WireException("Missing var \$_GET[token]");
 			if (empty($token_by_post)) throw new WireException("Missing var \$_POST[token]");
@@ -932,10 +933,10 @@ class ProcessPolls extends Process {
 	 * returns user_id if assigned, true if valid
 	 * 
 	 */
-	private function isValidToken($token) {
+	private function isValidToken($token) {	
 		$data = $this->getDataArray("SELECT used, user_id, INET6_NTOA(UNHEX(ip)) FROM process_poll_token WHERE token='$token' AND pages_id='$this->id' LIMIT 1;");
 		// token exists and has not been used yet
-		if (!empty($data[0]) && empty($data[0]['used'])) {
+		if (!empty($data[0]) && empty($data[0]['used'])) {		
 			if (!empty($data[0]['user_id'])) return $data[0]['user_id'];
 			return true;
 		}
