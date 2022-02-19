@@ -207,7 +207,7 @@ class ProcessPolls extends Process {
 
 			if (!empty($errors)) {
 				$errors = implode(', ', $errors);
-				$e->object->error("Processing Error [$errors]");
+				$this->error( __("Processing Error") . " [$errors]");
 				wire('log')->save('polls-error', "Hook in FormProcessor::validator failed: [$errors].");
 				$e->return = false;				
 			}
@@ -238,10 +238,11 @@ class ProcessPolls extends Process {
 
 			if (!empty($errors)) {
 				$errors = implode(', ', $errors);
-				$this->error("Processing Error [$errors]");
+				$this->error( __("Processing Error") . " [$errors]");
 				wire('log')->save('polls-error', "Hook in FormProcessor::success failed [$errors]. Unable to invalidate token: $token_by_post. Page [#$vote->id] has been created.");			
 			}
 			else if (!$this->invalidateToken($token_by_post)) {
+				$this->error( __("Processing Error") . " [8]");
 				wire('log')->save('polls-error', "Hook in FormProcessor::success failed. Unable to invalidate token: $token_by_post. Page [#$vote->id] has been created.");
 			} else {
 				$this->message("PVC-$vote->id-$vote->created-$token_by_post");				
