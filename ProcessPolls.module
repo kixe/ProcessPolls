@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.0.8 2022-02-18
+ * @version 1.0.9 2022-02-19
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -28,6 +28,7 @@
  * @since 1.0.6 - updated requirements - 2022-02-16
  * @since 1.0.7 - security update: token check via FormProcessor::validator(), safer SQL-Statements - 2022-02-18
  * @since 1.0.8 - fixed sanitizer bug - 2022-02-18
+ * @since 1.0.9 - removed exceptions from FormProcessor::success hook, added log for processing errors - 2022-02-19
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -39,7 +40,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 108, 
+			'version' => 109, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -172,12 +173,26 @@ class ProcessPolls extends Process {
 			});
 		}
 
+		/**
+		 * validate form after submit
+		 * ErrorCodes
+		 * 1: Missing var $data
+		 * 2: Missing var $data[require_token]
+		 * 3: Missing var $_GET[token]
+		 * 4: Missing var $_POST[token]
+		 * 5: var $_POST[token] does not match var $_GET[token]
+		 * 6: Invalid token
+		 * 7: Token does not belong to current user
+		 * 
+		 */
 		wire()->addHookAfter('FormProcessor::validator', function($e) use ($data) {
 
+			$errors = [];
+
 			// is this poll token based?
-			if(empty($data)) $errors[] = 1;
+			if (empty($data)) $errors[] = 1;
 			else if (!isset($data['require_token'])) $errors[] = 2;
-			else if ($data['require_token'] === '0') return true;
+			else if ($data['require_token'] === '0') return;
 
 			$token_by_post = wire('sanitizer')->alphanumeric($e->object->hiddenFields['token'],false,16);
 			$token_by_get = wire('sanitizer')->alphanumeric(wire('input')->get->token,false,16);
@@ -192,9 +207,9 @@ class ProcessPolls extends Process {
 
 			if (!empty($errors)) {
 				$errors = implode(', ', $errors);
-				$this->countInvalidRequests();
-				$e->object->error("Error [$errors]");
-				return false;				
+				$e->object->error("Processing Error [$errors]");
+				wire('log')->save('polls-error', "Hook in FormProcessor::validator failed: [$errors].");
+				$e->return = false;				
 			}
 		});
 
@@ -202,22 +217,35 @@ class ProcessPolls extends Process {
 		// and a new page has been saved
 		wire()->addHookAfter('FormProcessor::success', function($e) use ($data) {
 
+			$errors = [];
+			$vote = wire('pages')->get($e->arguments[0]);
+
 			// is this poll token based?
-			if(empty($data)) throw new WireException("Missing var \$data");
-			else if (!isset($data['require_token'])) throw new WireException("Missing var \$data[require_token]");
-			else if ($data['require_token'] === '0') return true;
+			if (empty($data)) $errors[] = 1;
+			else if (!isset($data['require_token'])) $errors[] = 2;
+			else if ($data['require_token'] === '0') return;
 
 			$token_by_post = wire('sanitizer')->alphanumeric($e->object->hiddenFields['token'],false,16);
 			$token_by_get = wire('sanitizer')->alphanumeric(wire('input')->get->token,false,16);
 
-			if (empty($token_by_get)) throw new WireException("Missing var \$_GET[token]");
-			if (empty($token_by_post)) throw new WireException("Missing var \$_POST[token]");
-			if ($token_by_post !== $token_by_get) throw new WireException("var \$_POST[token] does not match var \$_GET[token]");
+			if (empty($token_by_get)) $errors[] = 3;
+			if (empty($token_by_post)) $errors[] = 4;
+			if ($token_by_post !== $token_by_get) $errors[] = 5;
 
-			$page = wire('pages')->get($e->arguments[0]);
-			$this->message("PVC-$page->id-$page->created-$token_by_post");
 			$userID = $this->isValidToken($token_by_post);
-			$this->invalidateToken($token_by_post);
+			if ($userID === false) $errors[] = 6;			
+			if ($userID != wire('user')->id) $errors[] = 7;
+
+			if (!empty($errors)) {
+				$errors = implode(', ', $errors);
+				$this->error("Processing Error [$errors]");
+				wire('log')->save('polls-error', "Hook in FormProcessor::success failed [$errors]. Unable to invalidate token: $token_by_post. Page [#$vote->id] has been created.");			
+			}
+			else if (!$this->invalidateToken($token_by_post)) {
+				wire('log')->save('polls-error', "Hook in FormProcessor::success failed. Unable to invalidate token: $token_by_post. Page [#$vote->id] has been created.");
+			} else {
+				$this->message("PVC-$vote->id-$vote->created-$token_by_post");				
+			}
 		});
 
 		// remove poll from DB if Parent page has been trashed
@@ -474,10 +502,11 @@ class ProcessPolls extends Process {
 		/**
 		 * statusSystemID = 8 – Non-deleteable and locked ID (status neither removeable via API nor in PW-Backend)
 		 * statusSystem = 16 – Non-deleteable and locked ID, name, template, parent (status neither removeable via API nor in PW-Backend)
-		 * must be removed/edited manually directly in in DB
+		 * must be removed/ edited manually directly in in DB
 		 */
 		// $this->form->status = 1 + 4 + 8 + 16 + 2048;
-		$this->form->status = 1 + 4 + 2048; // active + locked + unpublished
+		// $this->form->status = 1 + 4 + 2048; // active + locked + unpublished (deletable only manually one-by-one or via API)
+		$this->form->status = 1 + 2048; // active +  unpublished
 		$this->form->submitValue = $this->_('Submit');
 		$info = [];
 		if ($data['require_token']) {
