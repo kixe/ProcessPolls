@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.0.9 2022-02-19
+ * @version 1.1.0 2022-02-22
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -29,7 +29,7 @@
  * @since 1.0.7 - security update: token check via FormProcessor::validator(), safer SQL-Statements - 2022-02-18
  * @since 1.0.8 - fixed sanitizer bug - 2022-02-18
  * @since 1.0.9 - removed exceptions from FormProcessor::success hook, added log for processing errors - 2022-02-19
- * 
+ * @since 1.1.0 - fixed bug removed deprecated function in PHP >= 8.1 - 2022-02-22
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
  */
@@ -40,7 +40,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 109, 
+			'version' => 110, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -115,9 +115,10 @@ class ProcessPolls extends Process {
 	 */
 	public function init() {
 		parent::init(); // load css
+		$dateFormat = $this->_('%Y-%m-%d');
 		wire('config')->scripts->add($this->config->urls('JqueryCore') . 'jquery.cookie.min.js');
 		wire('config')->scripts->add($this->config->urls('ProcessPolls') . 'ProcessPolls.js');
-		$this->polls = $this->getDataArray("SELECT * FROM process_poll", 'pages_id');
+		$this->polls = $this->getDataArray("SELECT *, UNIX_TIMESTAMP(start) AS tsStart, DATE_FORMAT(start, '$dateFormat') AS dateStart, UNIX_TIMESTAMP(`end`) AS tsEnd, DATE_FORMAT(`end`, '$dateFormat') AS dateEnd FROM process_poll", 'pages_id');
 		$this->isAdmin = wire('user')->hasPermission('poll-admin')? true : false;
 		$this->isMonitor = wire('user')->hasPermission('poll-monitor')? true : false;
 
@@ -469,22 +470,19 @@ class ProcessPolls extends Process {
 		}
 
 		$data = $this->polls[$this->id];
-		$start = strftime($this->_('%Y-%m-%d'), strtotime($data['start']));
-		$end = strftime($this->_('%Y-%m-%d'), strtotime($data['end']));
-		$user_id = wire('user')->id;
+		$userID = wire('user')->id;
 
 		// check date range
-		if(strtotime($data['start']) > time()) {
-			return sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $start, $end);
+		if($data['tsStart'] > time()) {
+			return sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $data['dateStart'], $data['dateEnd']);
 		}
-		if(strtotime($data['end']) < time()) {
-			return sprintf($this->_('This poll / election ended on %s. Participation is no longer possible.'), $end);
+		if($data['tsEnd'] < time()) {
+			return sprintf($this->_('This poll / election ended on %s. Participation is no longer possible.'), $data['dateEnd']);
 		}
 
 		// check access (backend process only)
 		if (wire('config')->admin && !empty($data['selector'])) {
 			$allowedUsers = wire('users')->findIDs($data['selector']);
-			$userID = wire('user')->id;
 			if (!in_array($userID, $allowedUsers)) throw new ProcessControllerPermissionException($this->_('Permission to participate in poll / election not granted.'));
 		}
 
@@ -518,7 +516,7 @@ class ProcessPolls extends Process {
 		}
 
 		else if ($data['anonymus']) $info[] = $this->_("Good bye!");
-		else $info[] = sprintf($this->_("This poll / election ends on %s. You can make changes to your entries up to this date. Reload the page or use the browser's 'Back' button to return to the input form."), $end);
+		else $info[] = sprintf($this->_("This poll / election ends on %s. You can make changes to your entries up to this date. Reload the page or use the browser's 'Back' button to return to the input form."), $data['dateEnd']);
 		$info = implode(' ', $info);
 		$this->form->successMessage = sprintf($this->_('Thank you for taking part in "%1$s". %2$s'), $data['title'], $info);
 
@@ -528,7 +526,7 @@ class ProcessPolls extends Process {
 			$token = wire('sanitizer')->alphanumeric($this->input->get('token'));
 
 			// has current user already participated in the poll or is already a token in DB assigned to this user?
-			$userToken = $this->getTokenByUser($this->id, $user_id);
+			$userToken = $this->getTokenByUser($this->id, $userID);
 			if (!empty($userToken['used'])) {
 				$return = "<p>" . $this->_('You have already taken part in this poll / election. Multiple participation is not permitted. Your participation has been registered as follows.') . "</p>" . $this->buildTokenTable([$userToken]);
 				if ($data['anonymus']) $return .= "<p>" . $this->_('Your vote has been saved anonymously.') . "</p>";
@@ -541,8 +539,8 @@ class ProcessPolls extends Process {
 
 				// log
 				if (!wire('user')->isLoggedin()) $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist. IP: " . $_SERVER['REMOTE_ADDR'];
-				else if (!empty($userToken['token'])) $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist and does not match token [$userToken[token]] assigned to current user [#$user_id]. IP: " . $_SERVER['REMOTE_ADDR'];
-				else $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist. No token assigned to current user [#$user_id]. IP: " . $_SERVER['REMOTE_ADDR'];
+				else if (!empty($userToken['token'])) $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist and does not match token [$userToken[token]] assigned to current user [#$userID]. IP: " . $_SERVER['REMOTE_ADDR'];
+				else $text = "Invalid Request [#$this->id]. Submitted token [$token] does not exist. No token assigned to current user [#$userID]. IP: " . $_SERVER['REMOTE_ADDR'];
 
 				wire('log')->save('polls-error', $text);
 
@@ -558,7 +556,7 @@ class ProcessPolls extends Process {
 				$this->renderInvalidRequestWarning();
 				
 				// log
-				$text = "Invalid Request [#$this->id]. Submitted token [$token] is valid but does not match token [$userToken[token]] assigned to current user [#$user_id]. Token [$token] has been deleted. User has been redirected with assigned token. IP: " . $_SERVER['REMOTE_ADDR'];
+				$text = "Invalid Request [#$this->id]. Submitted token [$token] is valid but does not match token [$userToken[token]] assigned to current user [#$userID]. Token [$token] has been deleted. User has been redirected with assigned token. IP: " . $_SERVER['REMOTE_ADDR'];
 				wire('log')->save('polls-error', $text);
 
 				// redirect to user assigned token
@@ -582,7 +580,7 @@ class ProcessPolls extends Process {
 		// check if user already participated in the poll (backend process only)
 		else {
 			if (wire('config')->admin) {
-				$page = wire('pages')->get("created_users_id=$user_id,parent=$parent,template=$template,include=all");
+				$page = wire('pages')->get("created_users_id=$userID,parent=$parent,template=$template,include=all");
 				if ($page->id) return $this->form->render($page->id);
 			}
 		}
@@ -624,18 +622,16 @@ class ProcessPolls extends Process {
 			if (empty($this->polls[$parent->id])) continue;
 
 			$data = $this->polls[$parent->id];
-			$start = strftime($this->_('%Y-%m-%d'), strtotime($data['start']));
-			$end = strftime($this->_('%Y-%m-%d'), strtotime($data['end']));
 
 			// check date range
-			if(strtotime($data['start']) < time()) {
-				$info = sprintf($this->_('This poll / election is active and ends on %s. Participation is no longer possible after this date.'), $end);
+			if($data['tsStart'] > time()) {
+				$info = sprintf($this->_('This poll / election is active and ends on %s. Participation is no longer possible after this date.'), $data['dateEnd']);
 			} else {
-				$info = sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $start, $end);
+				$info = sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $data['dateStart'], $data['dateEnd']);
 			}
-			if(strtotime($data['end']) < time()) {
+			if($data['tsEnd'] < time()) {
 				if (!$this->isAdmin) continue;
-				$info = sprintf($this->_('This poll / election ended on %s. Participation is no longer possible. The poll can be exported, evaluated and then deleted.'), $end);
+				$info = sprintf($this->_('This poll / election ended on %s. Participation is no longer possible. The poll can be exported, evaluated and then deleted.'), $data['dateEnd']);
 			}
 
 			if ($this->isMonitor) {
