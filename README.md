@@ -101,3 +101,13 @@ If it is not a token-based poll or election, the user can return here at any tim
 
 #### 4.2.2. Token-based poll or vote
 In a token-based poll or election, only one vote per user is possible. Voting is complete when the user clicks the 'Send' button and the confirmation code (see above) is displayed. In case of an error message, after correcting the entries, you can try again to vote by clicking the 'Send' button.
+
+## 	Installation
+
+### Basic informations
+[https://modules.processwire.com/install-uninstall/](https://modules.processwire.com/install-uninstall/)
+
+### Requirements
++ **[ProcessWire](https://github.com/processwire/processwire)** >= 3.0.163
++ **[FormProcessor](https://github.com/kixe/FormProcessor)**
++ **[ProcessExportPagesCSV](https://github.com/kixe/ProcessExportPagesCSV)**
