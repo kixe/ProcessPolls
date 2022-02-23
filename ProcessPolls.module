@@ -625,9 +625,9 @@ class ProcessPolls extends Process {
 
 			// check date range
 			if($data['tsStart'] > time()) {
-				$info = sprintf($this->_('This poll / election is active and ends on %s. Participation is no longer possible after this date.'), $data['dateEnd']);
-			} else {
 				$info = sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $data['dateStart'], $data['dateEnd']);
+			} else {
+				$info = sprintf($this->_('This poll / election is active and ends on %s. Participation is no longer possible after this date.'), $data['dateEnd']);
 			}
 			if($data['tsEnd'] < time()) {
 				if (!$this->isAdmin) continue;
