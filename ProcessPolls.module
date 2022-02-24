@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.1.1 2022-02-22
+ * @version 1.1.2 2022-02-24
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -31,6 +31,7 @@
  * @since 1.0.9 - removed exceptions from FormProcessor::success hook, added log for processing errors - 2022-02-19
  * @since 1.1.0 - fixed bug removed deprecated function in PHP >= 8.1 - 2022-02-22
  * @since 1.1.1 - added options for icons to be displayed in list - 2022-02-24
+ * @since 1.1.2 - do not init (autoload) module if not installed, prevent SQL Error - 2022-02-24
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
  */
@@ -41,7 +42,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 111, 
+			'version' => 112, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -115,7 +116,8 @@ class ProcessPolls extends Process {
 	 *
 	 */
 	public function init() {
-		parent::init(); // load css
+		if (wire('modules')->isInstalled($this->className()) === false) return false;
+		parent::init(); // load js, css
 		$dateFormat = $this->_('%Y-%m-%d');
 		wire('config')->scripts->add($this->config->urls('JqueryCore') . 'jquery.cookie.min.js');
 		wire('config')->scripts->add($this->config->urls('ProcessPolls') . 'ProcessPolls.js');
