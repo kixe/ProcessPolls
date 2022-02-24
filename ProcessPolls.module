@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.1.0 2022-02-22
+ * @version 1.1.1 2022-02-22
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -30,6 +30,7 @@
  * @since 1.0.8 - fixed sanitizer bug - 2022-02-18
  * @since 1.0.9 - removed exceptions from FormProcessor::success hook, added log for processing errors - 2022-02-19
  * @since 1.1.0 - fixed bug removed deprecated function in PHP >= 8.1 - 2022-02-22
+ * @since 1.1.1 - added options for icons to be displayed in list - 2022-02-24
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
  */
@@ -40,7 +41,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 110, 
+			'version' => 111, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -592,6 +593,7 @@ class ProcessPolls extends Process {
 	/**
 	 * renders a list of all/ active polls
 	 * @see ProcessList
+	 * @var $config->ProcessPollsList
 	 *
 	 */
 	protected function renderList() {
@@ -604,8 +606,7 @@ class ProcessPolls extends Process {
 			'disabledClass' => 'ui-priority-secondary',
 			'showIcon' => true, 
 		);
-		// $settings = wire('config')->ProcessPoll;
-		$settings = wire('config')->ProcessList;
+		$settings = !empty(wire('config')->ProcessPollsList)? wire('config')->ProcessPollsList : wire('config')->ProcessList;
 		if(!is_array($settings)) $settings = array();
 		$settings = array_merge($defaults, $settings);
 		$out = "\n<dl class='$settings[dlClass]'>";
@@ -624,14 +625,14 @@ class ProcessPolls extends Process {
 			$data = $this->polls[$parent->id];
 
 			// check date range
-			if($data['tsStart'] > time()) {
+			if ($data['tsEnd'] < time()) {
+				if (!$this->isAdmin) continue;
+				$info = sprintf($this->_('This poll / election ended on %s. Participation is no longer possible. The poll can be exported, evaluated and then deleted.'), $data['dateEnd']);
+			}
+			else if ($data['tsStart'] > time()) {
 				$info = sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $data['dateStart'], $data['dateEnd']);
 			} else {
 				$info = sprintf($this->_('This poll / election is active and ends on %s. Participation is no longer possible after this date.'), $data['dateEnd']);
-			}
-			if($data['tsEnd'] < time()) {
-				if (!$this->isAdmin) continue;
-				$info = sprintf($this->_('This poll / election ended on %s. Participation is no longer possible. The poll can be exported, evaluated and then deleted.'), $data['dateEnd']);
 			}
 
 			if ($this->isMonitor) {
@@ -663,11 +664,13 @@ class ProcessPolls extends Process {
 			
 			if($settings['showIcon']) { 
 				$icon = $parent->get('page_icon');
-				// if(!$icon) $icon = 'map-signs'; // map-signs, list-alt, clipboard
-				if(!$icon) $icon = ''; // no icon?
+				if(!$icon) {
+					if ($data['require_token'] && $data['anonymus']) $icon = 'check-square-o';
+					else $icon = 'clipboard';
+				}
 				if($icon) {
 					if(strpos($icon, 'fa-') === 0) list(,$icon) = explode('-', 2);
-					$icon = "<i style='float: right;' class='fa fa-2x fa-fw fa-$icon ui-priority-secondary'></i> ";
+					$icon = "<i class='fa fa-stack fa-fw fa-$icon ui-priority-secondary'></i> ";
 				}
 			}
 
@@ -719,7 +722,7 @@ class ProcessPolls extends Process {
 				$buttons = "<p class='poll-admin-links'><small>$editLink$delLink$exportLink</small></p>";
 			}
 
-			$out .= "\n\t<dt class='$dtClass'><a class='$settings[aClass]' href='$url'>$icon$title</a></dt>";
+			$out .= "\n\t<dt class='$dtClass'><a class='$settings[aClass]' href='$url'>$title$icon</a></dt>";
 			if($summary) $out .= "\n\t<dd class='$ddClass'><p>$summary</p><p>$info</p>$buttons</dd>";
 			else if ($buttons) $out .= "\n\t<dd class='$ddClass'>$info$buttons</dd>";
 			$cnt++;

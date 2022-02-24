@@ -59,7 +59,7 @@ By default, the system-generated tokens are a 6-digit alphanumeric string. This 
 #### 3.4.1. Token List
 A list with a certain number of valid tokens for a specific poll or election can be generated in the administration area. This is useful for frontend actions, e.g. if tokens are to be sent to the group of authorized persons by Email beforehand. An automatic mechanism for sending such Emails has not been implemented.
 
-#### 3.4.2. Suto-generated Tokens
+#### 3.4.2. auto-generated Tokens
 
 In polls or elections in the ProcessWire backend, after the authorization to participate has been checked, a token is generated and permanently linked to this user when the election list is called up. If the user then clicks on the link to vote, the token is transferred via the GET parameter and thus enables the election. Once the token has been generated, it is no longer possible for this user to use another token for the associated election.
 
@@ -111,3 +111,43 @@ In a token-based poll or election, only one vote per user is possible. Voting is
 + **[ProcessWire](https://github.com/processwire/processwire)** >= 3.0.163
 + **[FormProcessor](https://github.com/kixe/FormProcessor)**
 + **[ProcessExportPagesCSV](https://github.com/kixe/ProcessExportPagesCSV)**
+
+### Settings
+
+#### List
+Similar to the **ProcessList** core module, some display settings for the list can be modified. If not set, settings from **ProcessList** are used.
+
+```
+$config->ProcessPollsList = array(
+	'dlClass' => 'nav',
+	'dtClass' => '',
+	'ddClass' => '',
+	'aClass' => 'label',
+	'disabledClass' => 'ui-priority-secondary',
+	'showIcon' => true 
+);
+```
+
+#### Icon
+
+The default icon for anonymous and token-based elections is ***fa-check-square-o*** and ***fa-clipboard*** for all others.
+
+If the parent page under which votes are collected has a populated ***page_icon*** field, the default icon will be overridden by this.  
+**@see** Module [**PageIcon**](https://github.com/kixe/PageIcon)
+ 
+Depending on the use case, other symbols are suitable for a poll or election
+
++ fa-hand-paper-o
++ fa-map-signs
++ fa-list-alt
++ fa-line-chart
++ fa-graduation-cap
++ fa-hand-rock-o
++ fa-pencil-square-o
++ fa-user-secret
++ fa-share
++ fa-share-alt
++ fa-share-square-o
++ fa-thumbs-up
+
+
