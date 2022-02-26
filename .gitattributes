@@ -1,3 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
-.module linguist-language=PHP
+# Show correct language for ProcessWire .module
+*.module linguist-language=PHP
