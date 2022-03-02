@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.1.3 2022-03-02
+ * @version 1.1.4 2022-03-02
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -33,6 +33,7 @@
  * @since 1.1.1 - added options for icons to be displayed in list - 2022-02-24
  * @since 1.1.2 - do not init (autoload) module if not installed, prevent SQL Error - 2022-02-24
  * @since 1.1.3 - added option to enable/disable display of PVC - 2022-03-02
+ * @since 1.1.4 - fixed bug InputfieldCheckbox::renderValue shows 'checked' if not checked - 2022-03-02
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
  */
@@ -43,7 +44,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 113, 
+			'version' => 114, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -131,7 +132,6 @@ class ProcessPolls extends Process {
 		$this->id = abs($postID ? $postID : $getID);
 		$data = !empty($this->polls[$this->id])? $this->polls[$this->id] : null;
 
-
 		wire()->addHookAfter('InputfieldForm::processInput', function($e) {
 			$form = $e->object;
 			if ($form->name != 'config_process_poll') return;
@@ -144,6 +144,10 @@ class ProcessPolls extends Process {
 					$e->object->start->error($this->_('The start date must be before the end date.'));
 				}
 			}
+		});
+
+		wire()->addHookBefore('InputfieldCheckbox::renderValue', function($e) use ($data) {
+			if (!$e->object->checked) $e->object->val('');
 		});
 
 		// compose name
@@ -935,7 +939,7 @@ class ProcessPolls extends Process {
 		$f->attr('value', 1);
 		$f->attr('checked', $data['show_pvc'] ? 'checked' : '');
 		$f->label = $this->_('Show PVC');
-		$f->description = $this->_('After the vote has been submitted, the participant is shown a confirmation code: **PVC** *(Poll Verification Code)*. This confirmation code is neither stored in the database nor in a log file. However, it allows the participant to identify his opinion or vote during the evaluation.');
+		$f->description = $this->_('After submitting the opinion / vote, a **PVC** *(Poll Verification Code)* may be displayed to the participant. This verification code is not stored in the database or in a log file. However, it allows the participant to verify his opinion / vote later in the results list.');
 		$f->notes = $this->_('Only if poll /election is anonymous and token based.');
 		$f->columnWidth = 33;
 		$f->collapsed = $collapsed;
