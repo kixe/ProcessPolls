@@ -13,9 +13,11 @@ Polls via the frontend are basically anonymous, since no authentication is provi
 
 Polls can be token based. This guarantees that an opinion or vote is given only once. Anonymous surveys or elections are also possible here.
 
-In the case of token-based polls or elections, the registration of the opinion or vote is stored independently of the opinion or vote itself. After the vote has been submitted, the user is shown a confirmation code (PVC = Poll Verification Code) ==once==. This confirmation code is neither stored in the database nor in a log file. However, it allows the user to identify his opinion or voice during the evaluation. To do this, the code must be copied or saved with a screenshot at the moment when it is displayed after the election. Calling up the confirmation code again is impossible.
+In the case of token-based polls or elections, the registration of the opinion or vote is stored independently of the opinion or vote itself. After the vote has been submitted, the user is shown a confirmation code (PVC = Poll Verification Code) once , if option is selected in the setup. This confirmation code is neither stored in the database nor in a log file. However, it allows the user to identify his opinion or voice during the evaluation. To do this, the code must be copied or saved with a screenshot at the moment when it is displayed after the election. Calling up the confirmation code again is impossible.
 
 Without the confirmation code (PVC), which only the individual user knows, it is not possible for the user himself, another user or a system administrator to subsequently associate a user to an opinion or vote.
+
+The PVC is built from the page-ID (where the vote is stored) the created datetime (timestamp) of this page and the token used.
 
 ## 2. Conditions of Participation
 

@@ -2,7 +2,7 @@ body.ProcessPolls .poll-admin-links {
 	margin-top: 20px;
 }
 
-body.ProcessPolls dl.uk-description-list {
+body.ProcessPolls dl.uk-description-list p:not(.poll-admin-links) {
 	line-height: 1.5rem;
 }
 
@@ -10,6 +10,7 @@ body.ProcessPolls .uk-description-list > dt {
     font-size: 1.5rem;
     font-weight: bold;
     margin-bottom: 0.7rem;
+    line-height: 1.5rem;
 }
 
 body.ProcessPolls .uk-description-list > dt a {
