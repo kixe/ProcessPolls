@@ -674,11 +674,11 @@ class ProcessPolls extends Process {
 			if ($data['require_token'] && $this->isAdmin) {
 				$numTokens = $this->getNumTokens($parent->id);
 				$labelTotal = $this->_('total');
-				$labelUsed = $this->_('used');
 				$labelAssigned = $this->_('assigned');
+				$labelUsed = $this->_('used');
 				$labelTokens = $this->_('Tokens');
 				$labelUsedAssigned = $this->_('assigned & used');
-					$info .= "<br><strong>$labelTokens:</strong> <span class='uk-badge'>$numTokens[total]</span> <span class='uk-text-meta'>$labelTotal</span> <span class='uk-badge'>$numTokens[used]</span> <span class='uk-text-meta'>$labelUsed</span> <span class='uk-badge'>$numTokens[assigned]</span> <span class='uk-text-meta'>$labelAssigned</span> <span class='uk-badge'>$numTokens[usedAssigned]</span> <span class='uk-text-meta'>$labelUsedAssigned</span>";
+					$info .= "<br><strong>$labelTokens:</strong> <span class='uk-badge'>$numTokens[total]</span> <span class='uk-text-meta'>$labelTotal</span> <span class='uk-badge'>$numTokens[assigned]</span> <span class='uk-text-meta'>$labelAssigned</span> <span class='uk-badge'>$numTokens[used]</span> <span class='uk-text-meta'>$labelUsed</span> <span class='uk-badge'>$numTokens[usedAssigned]</span> <span class='uk-text-meta'>$labelUsedAssigned</span>";
 			}
 		
 			// check access
