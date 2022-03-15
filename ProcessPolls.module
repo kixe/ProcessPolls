@@ -325,7 +325,7 @@ class ProcessPolls extends Process {
 		$data = $this->polls[$this->id];
 		// export allowed for non superusers only after poll / election has been terminated
 		if (!$this->isAdmin && $data['tsEnd'] > time()) {
-			throw new WireException(sprintf($this->_('This poll / election is active and ends on %s. The results can only be exported after the poll / election has been terminated.'), $data['dateEnd']));
+			throw new WireException(sprintf($this->_('This poll / election is active and ends on %s (00:00). The results can only be exported after the poll / election has been terminated.'), $data['dateEnd']));
 		} 
 
 		$exportCSV = wire('modules')->get('ProcessExportPagesCSV');
