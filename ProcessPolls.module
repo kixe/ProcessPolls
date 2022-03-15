@@ -505,10 +505,10 @@ class ProcessPolls extends Process {
 
 		// check date range
 		if($data['tsStart'] > time()) {
-			return sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $data['dateStart'], $data['dateEnd']);
+			return sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s (00:00) to %2$s (00:00).'), $data['dateStart'], $data['dateEnd']);
 		}
 		if($data['tsEnd'] < time()) {
-			return sprintf($this->_('This poll / election ended on %s. Participation is no longer possible.'), $data['dateEnd']);
+			return sprintf($this->_('This poll / election ended on %s (00:00). Participation is no longer possible.'), $data['dateEnd']);
 		}
 
 		// check access (backend process only)
@@ -547,7 +547,7 @@ class ProcessPolls extends Process {
 		}
 
 		else if ($data['anonymus']) $info[] = $this->_("Good bye!");
-		else $info[] = sprintf($this->_("This poll / election ends on %s. You can make changes to your entries up to this date. Reload the page or use the browser's 'Back' button to return to the input form."), $data['dateEnd']);
+		else $info[] = sprintf($this->_("This poll / election ends on %s (00:00). You can make changes to your entries up to this date. Reload the page or use the browser's 'Back' button to return to the input form."), $data['dateEnd']);
 		$info = implode(' ', $info);
 		$this->form->successMessage = sprintf($this->_('Thank you for taking part in "%1$s". %2$s'), $data['title'], $info);
 
@@ -657,12 +657,12 @@ class ProcessPolls extends Process {
 			// check date range
 			if ($data['tsEnd'] < time()) {
 				if (!$this->isAdmin && !$this->isMonitor) continue;
-				$info = sprintf($this->_('This poll / election ended on %s. Participation is no longer possible. The poll can be exported, evaluated and then deleted.'), $data['dateEnd']);
+				$info = sprintf($this->_('This poll / election ended on %s (00:00). Participation is no longer possible. The poll can be exported, evaluated and then deleted.'), $data['dateEnd']);
 			}
 			else if ($data['tsStart'] > time()) {
-				$info = sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s to %2$s.'), $data['dateStart'], $data['dateEnd']);
+				$info = sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s (00:00) to %2$s (00:00).'), $data['dateStart'], $data['dateEnd']);
 			} else {
-				$info = sprintf($this->_('This poll / election is active and ends on %s. Participation is no longer possible after this date.'), $data['dateEnd']);
+				$info = sprintf($this->_('This poll / election is active and ends on %s (00:00). Participation is no longer possible after this date.'), $data['dateEnd']);
 			}
 
 			if ($this->isMonitor) {
