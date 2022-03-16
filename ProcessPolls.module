@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.1.4 2022-03-02
+ * @version 1.1.5 2022-03-22
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -34,6 +34,7 @@
  * @since 1.1.2 - do not init (autoload) module if not installed, prevent SQL Error - 2022-02-24
  * @since 1.1.3 - added option to enable/disable display of PVC - 2022-03-02
  * @since 1.1.4 - fixed bug InputfieldCheckbox::renderValue shows 'checked' if not checked - 2022-03-02
+ * @since 1.1.5 - added option to reset a poll - 2022-03-22
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
  */
@@ -44,7 +45,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 114, 
+			'version' => 115, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -412,6 +413,18 @@ class ProcessPolls extends Process {
 			wire('session')->redirect("./?id=$this->id");
 		}
 
+		if (!empty(wire('input')->get->resetPoll)) {
+			$tokens = $this->deleteTokens(true);
+			$pollChildren = wire('pages')->find("include=all,parent=$this->id");
+			$count = 0;
+			foreach ($pollChildren as $child) {
+				if ($child->delete(true)) $count++;
+			}
+			$this->message(sprintf($this->_('Successfully deleted %1$d opinions / votes.'), $count));
+			wire('session')->redirect("./?id=$this->id");
+		}
+
+
 		$form = $this->buildForm($this->id);
 		if($this->input->post->save_poll) {
 			$form = $this->save($form, true);
@@ -582,7 +595,7 @@ class ProcessPolls extends Process {
 			if (!empty($userToken['user_id']) && $token != $userToken['token']) {	
 
 				// delete the valid but wrong token
-				$this->deleteToken($token);
+				$this->deleteTokens($token);
 				$this->countInvalidRequests();
 				$this->renderInvalidRequestWarning();
 				
@@ -752,7 +765,8 @@ class ProcessPolls extends Process {
 				$buttons = "<p class='poll-admin-links'><small>$editLink$delLink$exportLink</small></p>";
 			}
 
-			$out .= "\n\t<dt class='$dtClass'><a class='$settings[aClass]' href='$url'>$title$icon</a></dt>";
+			if($summary) $summary = html_entity_decode($summary);
+				$out .= "\n\t<dt class='$dtClass'><a class='$settings[aClass]' href='$url'>$title$icon</a></dt>";
 			if($summary) $out .= "\n\t<dd class='$ddClass'><p>$summary</p><p>$info</p>$buttons</dd>";
 			else if ($buttons) $out .= "\n\t<dd class='$ddClass'>$info$buttons</dd>";
 			$cnt++;
@@ -911,6 +925,7 @@ class ProcessPolls extends Process {
 		$f->notes = $this->_('A confirmation checkbox is provided only for Polls / elections in the ProcessWire backend.');
 		$f->columnWidth = 100;
 		$f->collapsed = $collapsed;
+		$f->required = false;
 		$form->add($f);
 
 		$f = wire('modules')->get('InputfieldCheckbox');
@@ -967,7 +982,6 @@ class ProcessPolls extends Process {
 				$ajaxButton->attr('id', 'ajaxTokenLoader'); 
 				$f->markupText .= $ajaxButton->render();// add button to add rows via ajax
 			}
-
 			$form->add($f);
 		}
 
@@ -988,6 +1002,16 @@ class ProcessPolls extends Process {
 				// $f->aclass = 'ignore-active-tab'; // wrapper
 				$f->href = "./?id=$id&createTokens=5";
 				$f->showIf = "require_token=1";
+				$f->attr('id+name','create_tokens');
+				$form->add($f);
+
+				$f = wire('modules')->get('InputfieldButton');
+				$f->notes = $this->_('Delete all opinions / votes and all tokens either used or not for this poll.');
+				$f->value = $this->_('Reset Poll');
+				$f->class .= ' ui-priority-secondary';
+				$f->href = "./?id=$id&resetPoll=1";
+				$f->showInHeader();
+				$f->attr('id+name','reset_poll');
 				$form->add($f);
 
 				// add button to create and render tokens related to this poll ??
@@ -1007,13 +1031,14 @@ class ProcessPolls extends Process {
 	 * returns user_id if assigned, true if valid
 	 * 
 	 */
-	private function isValidToken($token) {	
+	private function isValidToken($token, $countInvalidRequests = true) {	
 		$data = $this->getDataArray("SELECT used, user_id, INET6_NTOA(UNHEX(ip)) FROM process_poll_token WHERE token='$token' AND pages_id='$this->id' LIMIT 1;");
 		// token exists and has not been used yet
 		if (!empty($data[0]) && empty($data[0]['used'])) {		
 			if (!empty($data[0]['user_id'])) return $data[0]['user_id'];
 			return true;
 		}
+		if ($countInvalidRequests === false) return false;
 		if (!$this->countInvalidRequests()) throw new WireException('The number of unauthorized requests (usage of invalid token) has been exceeded.');
 		return false;
 	}
@@ -1032,19 +1057,25 @@ class ProcessPolls extends Process {
 	}
 
 	/**
-	 * Rremove token from DB
-	 * @param string $token
+	 * Rremove token/s from DB
+	 * @param string|bool $token
 	 * @return bool
 	 *
 	 */
-	private function deleteToken($token) {
-		$sql = "DELETE FROM process_poll_token WHERE token=:delete LIMIT 1;";
-		$sth = wire('database')->prepare($sql);
-		$sth->bindValue(":delete", $token); 
+	private function deleteTokens($token) {
+		if ($token === true && $this->id) {
+			$sql = "DELETE FROM process_poll_token WHERE pages_id=:id;";
+			$sth = wire('database')->prepare($sql);
+			$sth->bindValue(":id", $this->id); 
+		} else {
+			$sql = "DELETE FROM process_poll_token WHERE token=:delete LIMIT 1;";
+			$sth = wire('database')->prepare($sql);
+			$sth->bindValue(":delete", $token);
+		}
 		$result = $sth->execute();
 		if ($result) return true;
+		$this->error(wire('database')->errorInfo(), Notice::logOnly); // log on failure?
 		return false;
-		// $this->error(wire('database')->errorInfo()); // log on failure?
 	}
 
 	/**
@@ -1061,6 +1092,7 @@ class ProcessPolls extends Process {
 		$sth->bindValue(":token", $token); 
 		$result = $sth->execute();
 		if ($result) return true;
+		$this->error(wire('database')->errorInfo(), Notice::logOnly); // log on failure?
 		return false;
 	}
 
@@ -1078,6 +1110,7 @@ class ProcessPolls extends Process {
 		$sth->bindValue(":token", $token); 
 		$result = $sth->execute();
 		if ($result) return true;
+		$this->error(wire('database')->errorInfo(), Notice::logOnly); // log on failure?
 		return false;
 	}
 
@@ -1093,9 +1126,12 @@ class ProcessPolls extends Process {
 		$random = new WireRandom();
 		$tokens = [];
 		$values = [];
+		$result = null;
 		$i = 0;
 		while ($i < $num) {
 			$token = $random->alphanumeric(self::TOKEN_LENGTH);
+			// check for duplicates
+			if ($this->isValidToken($token, false)) continue;
 			$values[] = $user? "('$poll', '$token', $user)" : "('$poll', '$token')";
 			$tokens[] = $token;
 			$i++;
@@ -1106,6 +1142,7 @@ class ProcessPolls extends Process {
 		$sth = wire('database')->prepare($sql);
 		$result = $sth->execute();
 		if ($result) return $tokens;
+		$this->error(wire('database')->errorInfo(), Notice::logOnly); // log on failure?
 		return false; 
 	}
 
