@@ -684,6 +684,7 @@ class ProcessPolls extends Process {
 		$buttons = '';
 		$deleteLabel = $this->_('Delete');
 		$exportLabel = $this->_('Export');
+		$previewLabel = $this->_('Preview');
 		$editLabel = $this->isAdmin? $this->_('Edit') : // new line for translations
 					$this->_('Details');
 		
@@ -786,10 +787,12 @@ class ProcessPolls extends Process {
 				$editUrl = $this->getProcessPage()->url . "./edit/?id=$parent->id";
 				$delUrl = $this->getProcessPage()->url . "./delete/?id=$parent->id";
 				$exportUrl = $this->getProcessPage()->url . "./export/?id=$parent->id";
+				$previewUrl = $this->getProcessPage()->url . "./participate/?id=$parent->id&amp;preview=1";
 				$editLink = "<a class='ui-button ui-priority-secondary' href='$editUrl'><i class='fa fa-cogs'></i> $editLabel</a>";
+				$previewLink = "<a class='ui-button ui-priority-secondary' href='$previewUrl'><i class='fa fa-eye'></i> $previewLabel</a>";
 				$delLink = $this->isAdmin? "<a class='ui-button ui-priority-secondary' href='$delUrl'><i class='fa fa-trash-o'></i> $deleteLabel</a>" : '';
 				$exportLink = $this->isAdmin || (wire('user')->hasPermission('export-csv') && $data['tsEnd'] < time())? "<a class='ui-button ui-priority-secondary' href='$exportUrl'><i class='fa fa-share'></i> $exportLabel</a>" : '';
-				$buttons = "<p class='poll-admin-links'><small>$editLink$delLink$exportLink</small></p>";
+				$buttons = "<p class='poll-admin-links'><small>$editLink$previewLink$delLink$exportLink</small></p>";
 			}
 
 			if($summary) $summary = html_entity_decode($summary);
