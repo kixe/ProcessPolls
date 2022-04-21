@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.1.6 2022-04-01
+ * @version 1.1.7 2022-04-21
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -36,6 +36,7 @@
  * @since 1.1.4 - fixed bug: InputfieldCheckbox::renderValue shows 'checked' if not checked - 2022-03-02
  * @since 1.1.5 - added option to reset a poll - 2022-03-22
  * @since 1.1.6 - fixed bug: set title and breadcrumb in participation screen before any return - 2022-04-01
+ * @since 1.1.7 - added option for preview for roles poll-admin and poll-monitor, added confirm dialog (js) for token based polls - 2022-04-21
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
  */
@@ -46,7 +47,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 116, 
+			'version' => 117, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -213,6 +214,13 @@ class ProcessPolls extends Process {
 		 */
 		wire()->addHookAfter('FormProcessor::validator', function($e) use ($data) {
 
+			// preview / sandbox mode
+			if (!empty(wire('input')->get->preview) || $e->object->sandbox === true) {
+				$this->warning( __('Sandbox mode. Submitting the form has no effect.'));
+				$e->return = false;
+				return;
+			}
+
 			$errors = [];
 
 			// is this poll token based?
@@ -275,6 +283,10 @@ class ProcessPolls extends Process {
 				if ($data['show_pvc'] === '1' && $data['require_token'] === '1' && $data['anonymus'] === '1') {
 					$message .= " PVC-$vote->id-$vote->created-$token_by_post";
 				}
+				// for debugging purposes
+				if (wire('config')->ProcessPollsLogPVC === true && $data['require_token'] === '1' && $data['anonymus'] === '1') {
+					wire('log')->save("poll-$this->id", "PVC-$vote->id-$vote->created-$token_by_post");
+				}
 				$this->message($message);	
 			}
 		});
@@ -288,6 +300,9 @@ class ProcessPolls extends Process {
 
 		$this->form = new FormProcessor();
 		$this->form->init();
+		if (!empty($data) && $data['require_token'] === '1') {
+			$this->form->confirmText = __('Are you sure you want to submit the form? Changes to your entries are then no longer possible!');
+		}
 	}
 	
 	/**
@@ -523,20 +538,7 @@ class ProcessPolls extends Process {
 			$this->headline($data['title']);
 		}
 
-		// check date range
-		if($data['tsStart'] > time()) {
-			return sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s (00:00) to %2$s (00:00).'), $data['dateStart'], $data['dateEnd']);
-		}
-		if($data['tsEnd'] < time()) {
-			return sprintf($this->_('This poll / election ended on %s (00:00). Participation is no longer possible.'), $data['dateEnd']);
-		}
-
-		// check access (backend process only)
-		if (wire('config')->admin && !empty($data['selector'])) {
-			$allowedUsers = wire('users')->findIDs($data['selector']);
-			if (!in_array($userID, $allowedUsers)) throw new ProcessControllerPermissionException($this->_('Permission to participate in poll / election not granted.'));
-		}
-
+		// create form
 		$template = wire('templates')->get($data['template']);
 		if (!$template) throw new WireException($this->_('Template could not be loaded'));
 
@@ -552,6 +554,30 @@ class ProcessPolls extends Process {
 		// $this->form->status = 1 + 4 + 2048; // active + locked + unpublished (deletable only manually one-by-one or via API)
 		$this->form->status = 1 + 2048; // active +  unpublished
 		$this->form->submitValue = $this->_('Submit');
+
+		// display preview form see below
+		if (($this->isAdmin || $this->isMonitor) && !empty(wire('input')->get->preview)) {
+			$this->form->successMessage = '';
+			// form not processed in FormProcessor
+			$this->form->sandbox = true;
+			// show blank form
+			return $this->form->render();
+		}
+
+		// check access (backend process only)
+		if (wire('config')->admin && !empty($data['selector'])) {
+			$allowedUsers = wire('users')->findIDs($data['selector']);
+			if (!in_array($userID, $allowedUsers)) throw new ProcessControllerPermissionException($this->_('Permission to participate in poll / election not granted.'));
+		}
+
+		// check date range
+		if($data['tsStart'] > time()) {
+			return sprintf($this->_('This poll / election has not started yet. Participation is possible from %1$s (00:00) to %2$s (00:00).'), $data['dateStart'], $data['dateEnd']);
+		}
+		if($data['tsEnd'] < time()) {
+			return sprintf($this->_('This poll / election ended on %s (00:00). Participation is no longer possible.'), $data['dateEnd']);
+		}
+
 		$info = [];
 		if ($data['require_token']) {
 			$info[] = $this->_("The token used has been invalidated. No further participation with the same token is possible.");
@@ -1086,7 +1112,7 @@ class ProcessPolls extends Process {
 	 *
 	 */
 	private function invalidateToken($token) {
-		$sql = "UPDATE process_poll_token SET used=1, user_id=:user_id, ip=HEX(INET6_ATON(:ip)) WHERE token=:token AND used IS NULL AND (user_id IS NULL OR user_id=:user_id) AND ip IS NULL LIMIT 1;";
+		$sql = "UPDATE process_poll_token SET used=1, user_id=:user_id, ip=HEX(INET6_ATON(:ip)) WHERE token=:token AND used IS NULL AND (user_id IS NULL OR user_id=:user_id) AND (ip IS NULL OR ip='') LIMIT 1;";
 		$sth = wire('database')->prepare($sql);
 		$sth->bindValue(":ip", wire('session')->getIP());
 		$sth->bindValue(":user_id", wire('user')->id);
