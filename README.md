@@ -39,7 +39,7 @@ In addition to the superuser (ID=41), all users with roles assigned the 'poll-ad
 
 ### 3.3. Election Observer
 
-The 'poll-monitor' permission is created when the module is installed. All users with roles assigned this permission can see the administration interface but cannot edit it. In addition, the number of opinions or votes given is displayed in the list view.
+The 'poll-monitor' permission is created when the module is installed. All users with roles assigned this permission can see a preview of the template in sandbox mode and the non-editable administration interface. In addition, the number of opinions or votes given is displayed in the list view.
 
 ### 3.4. Tokens
 

@@ -1087,7 +1087,7 @@ class ProcessPolls extends Process {
 	}
 
 	/**
-	 * Rremove token/s from DB
+	 * Remove token/s from DB
 	 * @param string|bool $token
 	 * @return bool
 	 *
@@ -1134,7 +1134,7 @@ class ProcessPolls extends Process {
 	 */
 	private function assignToken($token) {
 		if (!wire('user')->isLoggedin()) return false;
-		$sql = "UPDATE process_poll_token SET user_id=:user_id WHERE token=:token AND used IS NULL AND user_id IS NULL AND ip IS NULL LIMIT 1;";
+		$sql = "UPDATE process_poll_token SET user_id=:user_id WHERE token=:token AND used IS NULL AND user_id IS NULL AND (ip IS NULL OR ip='') LIMIT 1;";
 		$sth = wire('database')->prepare($sql);
 		$sth->bindValue(":user_id", wire('user')->id);
 		$sth->bindValue(":token", $token); 
@@ -1186,7 +1186,7 @@ class ProcessPolls extends Process {
 	 * 
 	 */
 	private function getTokens($poll, $limit = self::MAX_NUM_TOKEN, $offset = 0, $unused = false) {
-		$filter = $unused? " AND used IS NULL AND user_id IS NULL AND ip IS NULL" : '';
+		$filter = $unused? " AND used IS NULL AND user_id IS NULL AND (ip IS NULL OR ip='')" : '';
 		$sql = "SELECT pages_id, token, used, user_id, INET6_NTOA(UNHEX(ip)) FROM process_poll_token WHERE pages_id=$poll$filter LIMIT $offset, $limit;";
 		return $this->getDataArray($sql);
 	}
