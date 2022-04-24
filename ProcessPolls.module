@@ -662,7 +662,8 @@ class ProcessPolls extends Process {
 
 	/**
 	 * renders a list of all/ active polls
-	 * @see ProcessList
+	 * @see ProcessList::render()
+	 * @var $config->ProcessList
 	 * @var $config->ProcessPollsList
 	 *
 	 */
