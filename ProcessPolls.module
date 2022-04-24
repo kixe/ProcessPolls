@@ -600,7 +600,7 @@ class ProcessPolls extends Process {
 			$userToken = $this->getTokenByUser($this->id, $userID);
 			if (!empty($userToken['used'])) {
 				$return = "<p>" . $this->_('You have already taken part in this poll / election. Multiple participation is not permitted. Your participation has been registered as follows.') . "</p>" . $this->buildTokenTable([$userToken]);
-				if ($data['anonymus']) $return .= "<p>" . $this->_('Your vote has been saved anonymously.') . "</p>";
+				if ($data['anonymus']) $return .= "<p>" . $this->_('Your opinion or vote was saved anonymously regardless of the participation registration.') . "</p>";
 				return $return;
 			}
 
