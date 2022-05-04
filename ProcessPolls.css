@@ -17,7 +17,7 @@ body.ProcessPolls .uk-description-list > dt a {
 	vertical-align:baseline;
 }
 
-body.ProcessPolls .description, .pw-description {
+body.ProcessPolls form:not([name="config_process_poll"]) .description, .pw-description {
     color: #354b60 !important;
 }
 
