@@ -7,7 +7,7 @@
  * 
  *
  * @author kixe (Christoph Thelen) note@qualyweb.com 2020-08-23
- * @copyright © 2018 Christoph Thelen
+ * @copyright © 2020 Christoph Thelen
  * @license Licensed under GNU/GPL v3
  * @link http://qualyweb.com
  * 
@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.1.7 2022-04-21
+ * @version 1.1.8 2022-05-04
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -37,6 +37,7 @@
  * @since 1.1.5 - added option to reset a poll - 2022-03-22
  * @since 1.1.6 - fixed bug: set title and breadcrumb in participation screen before any return - 2022-04-01
  * @since 1.1.7 - added option for preview for roles poll-admin and poll-monitor, added confirm dialog (js) for token based polls - 2022-04-21
+ * @since 1.1.8 - added option to hide in list for roles poll-monitor if not poll-admin and participation not granted - 2022-05-04
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
  */
@@ -47,7 +48,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 117, 
+			'version' => 118, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -724,11 +725,14 @@ class ProcessPolls extends Process {
 			}
 		
 			// check access
+			$allowedUsers = [];
+			$userID = wire('user')->id;
 			if (!empty($data['selector'])) {
 				$allowedUsers = wire('users')->findIDs($data['selector']);
-				$userID = wire('user')->id;
-				if (!$this->isAdmin && !in_array($userID, $allowedUsers)) continue;
+				if (!$this->isAdmin && !$this->isMonitor && !in_array($userID, $allowedUsers)) continue;
 			}
+			// hidden for monitors if participation not granted and hide_in_list checked
+			if (!$this->isAdmin && $this->isMonitor && $data['hide_in_list'] && !in_array($userID, $allowedUsers)) continue;
 		
 			$dtClass = $settings['dtClass'];
 			$ddClass = $settings['ddClass'];
@@ -944,7 +948,19 @@ class ProcessPolls extends Process {
 		// $f->optgroupsOrder = 'system,field,subfield,modifier';
 		$f->attr('value', $data['selector']);
 		$f->collapsed = $collapsed;
+		$f->columnWidth = 80;
 		$form->add($f);
+
+		if ($this->isAdmin) {
+			$f = wire('modules')->get('InputfieldCheckbox');
+			$f->attr('id+name', 'hide_in_list');
+			$f->attr('value', 1);
+			$f->attr('checked', $data['anonymus'] ? 'checked' : '');
+			$f->label = $this->_('Hide for Monitors');
+			$f->description = $this->_('Hide this poll / elections in the list for users with role `poll-monitor` if participation is not granted.');
+			$f->columnWidth = 20;
+			$form->add($f);
+		}
 
 		// conditions of participation
 		$f = wire('modules')->get('InputfieldPageListSelect');
@@ -1110,7 +1126,7 @@ class ProcessPolls extends Process {
 	}
 
 	/**
-	 * Invalidate a used token, set used user_id, IP-Adress
+	 * Invalidate a used token, set used, user_id, IP-Adress
 	 * @param string $token
 	 * @return bool
 	 *
@@ -1359,7 +1375,7 @@ class ProcessPolls extends Process {
 				$id = $this->addPollPage();
 			}
 
-			$sql .= " `process_poll` SET start=:start, end=:end, require_token=:require_token, anonymus=:anonymus, show_pvc=:show_pvc, template=:template, title=:title, summary=:summary, selector=:selector, cop_id=:cop_id, modified_users_id=:modified_users_id";
+			$sql .= " `process_poll` SET start=:start, end=:end, require_token=:require_token, anonymus=:anonymus, show_pvc=:show_pvc, template=:template, title=:title, summary=:summary, selector=:selector, hide_in_list=:hide_in_list, cop_id=:cop_id, modified_users_id=:modified_users_id";
 			$sql .= $update? ', modified=:modified WHERE ' : ', created_users_id=:created_users_id, ';
 			$sql .= "pages_id=:pages_id;";
 			// if (empty($this->input->post->require_token)) $sql .= "DELETE FROM process_poll_token WHERE pages_id=:pages_id;";
@@ -1404,7 +1420,8 @@ class ProcessPolls extends Process {
 			'title' => '',
 			'summary' => '',
 			'selector' => '',
-			'cop_id' => 0
+			'cop_id' => 0,
+			'hide_in_list' => 0
 		);
 	}
 
@@ -1425,6 +1442,7 @@ class ProcessPolls extends Process {
 			`title` text NOT NULL,
 			`summary` mediumtext NOT NULL,
 			`selector` text NOT NULL,
+			`hide_in_list` tinyint NOT NULL COMMENT 'Hidden in list for users with role poll-monitor',
 			`cop_id` int UNSIGNED NOT NULL COMMENT 'Page holding conditions of participation.',
 			`created` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			`modified` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
