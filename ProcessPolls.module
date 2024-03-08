@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.2.1 2023-06-21
+ * @version 1.2.2 2024-03-08
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -41,6 +41,7 @@
  * @since 1.1.9 - fixed bug: Error in Logfile after a session has been expired, re-login is initiated and GET-Param: token has been removed by ProcessLogin::determineAfterLoginUrl() - 2022-05-07
  * @since 1.2.0 - added language support for 'title' and 'summary' - 2023-06-15
  * @since 1.2.1 - fixed bug: language support for 'title' and 'summary' - 2023-06-21
+ * @since 1.2.2 - switch submit / save label if poll is editable (backend only) - 2024-03-08
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -52,7 +53,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 121, 
+			'version' => 122, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -593,7 +594,7 @@ class ProcessPolls extends Process {
 		// $this->form->status = 1 + 4 + 8 + 16 + 2048;
 		// $this->form->status = 1 + 4 + 2048; // active + locked + unpublished (deletable only manually one-by-one or via API)
 		$this->form->status = 1 + 2048; // active +  unpublished
-		$this->form->submitValue = $this->_('Submit');
+		$this->form->submitValue = $this->_('Submit'); // default button label for save / submit
 
 		// display preview form see below
 		if (($this->isAdmin || $this->isMonitor) && !empty(wire('input')->get->preview)) {
@@ -604,10 +605,20 @@ class ProcessPolls extends Process {
 			return $this->form->render();
 		}
 
+		// $this->form->resetValue = $this->_('Reset'); 
+		// $this->form->showResetInHeader = true;
+
+
 		// check access (backend process only)
 		if (wire('config')->admin && !empty($data['selector'])) {
 			$allowedUsers = wire('users')->findIDs($data['selector']);
 			if (!in_array($userID, $allowedUsers)) throw new ProcessControllerPermissionException($this->_('Permission to participate in poll / election not granted.'));
+
+			// editable?
+			if (!$data['require_token'] && !$data['anonymus']) {
+				$this->form->submitValue = $this->_('Save'); 
+				$this->form->showSubmitInHeader = true;
+			}
 		}
 
 		// check date range
