@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.1.9 2022-05-07
+ * @version 1.2.1 2023-06-21
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -39,6 +39,8 @@
  * @since 1.1.7 - added option for preview for roles poll-admin and poll-monitor, added confirm dialog (js) for token based polls - 2022-04-21
  * @since 1.1.8 - added option to hide in list for roles poll-monitor if not poll-admin and participation not granted - 2022-05-04
  * @since 1.1.9 - fixed bug: Error in Logfile after a session has been expired, re-login is initiated and GET-Param: token has been removed by ProcessLogin::determineAfterLoginUrl() - 2022-05-07
+ * @since 1.2.0 - added language support for 'title' and 'summary' - 2023-06-15
+ * @since 1.2.1 - fixed bug: language support for 'title' and 'summary' - 2023-06-21
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -50,7 +52,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 119, 
+			'version' => 121, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -353,11 +355,16 @@ class ProcessPolls extends Process {
 		$this->fuel->breadcrumbs->add(new Breadcrumb('../', $this->_('Polls & Elections')));
 		$exportCSV->export_selector_init = "include=all,parent=$this->id,template=$data[template]";
 		// $exportCSV->exportSelectorFields = ['poll_test_radio_1']; // if enabled only these
-		$exportColumns = ['ID' => 'id','NAME' => 'name', 'DATETIME' => 'created'];
+		// $exportColumns = ['ID' => 'id','NAME' => 'name', 'DATETIME' => 'created'];
+		$exportColumns = [$this->_('DATETIME (created)') => 'createdStr'];
 		foreach (wire('templates')->get($data['template'])->fields as $f) {	
+			if (strpos($f->type->name, 'FieldtypeFieldset') === 0) continue;
 			if (in_array($f->name, ['title','page_icon'])) continue;
+			$f = $f->getContext($data['template']);
 			$f = wire('templates')->get($data['template'])->fieldgroup->getField($f, true);
-			$exportColumns[$f->get('label|name')] = $f->name;
+			$key = 'label|name';
+			if (!wire('user')->language->isDefault()) $key = 'label' . wire('user')->language->id . '|label|name';
+			$exportColumns[$f->get($key)] = $f->name;
 		}
 		$exportCSV->exportColumns = $exportColumns;
 		return $exportCSV->render();
@@ -450,7 +457,17 @@ class ProcessPolls extends Process {
 			$this->polls = $this->getDataArray("SELECT * FROM process_poll", 'pages_id');
 		}
 		$data = $this->polls[$this->id];
-		$this->headline(sprintf("poll-%d: %s", $this->id, "\"$data[title]\""));
+
+		// title
+		$title = $data['title'];
+		if ($this->wire('languages') && strpos($data['title'], '{"') === 0) {		
+			$langValues = json_decode($data['title'], true);
+			$title = $langValues[$this->wire('user')->language->id];
+			// fallback to default
+			if(!strlen($title)) $title = $langValues[$this->wire('languages')->getDefault()->id];
+		}
+
+		$this->headline(sprintf("poll-%d: %s", $this->id, "\"$title\""));
 
 		return $form->render();
 	}
@@ -484,7 +501,17 @@ class ProcessPolls extends Process {
 			throw new WireException($this->_('Missing GET parameter: ID'));
 		}
 		$data = $this->polls[$this->id];
-		$this->headline(sprintf($this->_("Delete poll-%d: %s"), $this->id, "\"$data[title]\""));
+
+		// title
+		$title = $data['title'];
+		if ($this->wire('languages') && strpos($data['title'], '{"') === 0) {		
+			$langValues = json_decode($data['title'], true);
+			$title = $langValues[$this->wire('user')->language->id];
+			// fallback to default
+			if(!strlen($title)) $title = $langValues[$this->wire('languages')->getDefault()->id];
+		}
+
+		$this->headline(sprintf($this->_("Delete poll-%d: %s"), $this->id, "\"$title\""));
 		$this->fuel->breadcrumbs->add(new Breadcrumb('../', $this->_('Polls & Elections')));
 
 		$form = $this->modules->get('InputfieldForm');
@@ -520,7 +547,7 @@ class ProcessPolls extends Process {
 	 * @requires permission poll-view
 	 *
 	 */
-	public function executeParticipate() {
+	public function ___executeParticipate() {
 		if (!$this->id) throw new WireException($this->_('Missing GET parameter: id'));
 		else {
 			$parent = wire('pages')->get('id= ' . (int) $this->id . ',parent=' . $this->getProcessPage() . ',include=all');
@@ -538,7 +565,17 @@ class ProcessPolls extends Process {
 		// add headline & breadcrumb (backend process only)
 		if (wire('config')->admin) {
 			$this->fuel->breadcrumbs->add(new Breadcrumb('../', $this->_('Polls & Elections')));
-			$this->headline($data['title']);
+
+			// title
+			$title = $data['title'];
+			if ($this->wire('languages') && strpos($data['title'], '{"') === 0) {		
+				$langValues = json_decode($data['title'], true);
+				$title = $langValues[$this->wire('user')->language->id];
+				// fallback to default
+				if(!strlen($title)) $title = $langValues[$this->wire('languages')->getDefault()->id];
+			}
+
+			$this->headline($title);
 		}
 
 		// create form
@@ -592,7 +629,8 @@ class ProcessPolls extends Process {
 		else if ($data['anonymus']) $info[] = $this->_("Good bye!");
 		else $info[] = sprintf($this->_("This poll / election ends on %s (00:00). You can make changes to your entries up to this date. Reload the page or use the browser's 'Back' button to return to the input form."), $data['dateEnd']);
 		$info = implode(' ', $info);
-		$this->form->successMessage = sprintf($this->_('Thank you for taking part in "%1$s". %2$s'), $data['title'], $info);
+
+		$this->form->successMessage = sprintf($this->_('Thank you for taking part in "%1$s". %2$s'), $title, $info);
 
 		// token required?
 		if ($data['require_token']) {
@@ -665,7 +703,16 @@ class ProcessPolls extends Process {
 				if ($page->id) return $this->form->render($page->id);
 			}
 		}
-		if ($data['summary']) wire('page')->body = "<p class='description'>" . $data['summary'] . "</p>";
+
+		// summary
+		if (!empty($data['summary'])) {
+			if ($this->wire('languages') && strpos($data['summary'], '{"') === 0) {		
+				$langValues = json_decode($data['summary'], true);
+				$summary = $langValues[$this->wire('user')->language->id];
+			} else $summary = $data['summary']; // something with date start end??
+		} else $summary = '';
+
+		if ($summary) wire('page')->body = "<p class='description'>" . $summary . "</p>";
 		// otherwise blank form
 		return $this->form->render();
 	}	
@@ -761,11 +808,24 @@ class ProcessPolls extends Process {
 
 			// title
 			$title = $data['title'];
+			if ($this->wire('languages') && strpos($data['title'], '{"') === 0) {		
+				$langValues = json_decode($data['title'], true);
+				$title = $langValues[$this->wire('user')->language->id];
+				// fallback to default
+				if(!strlen($title)) $title = $langValues[$this->wire('languages')->getDefault()->id];
+			}
+	
 			if(!strlen($title)) $title = $this->_('Poll / Election') . " $parent->id";
 			
 			// summary
 			if (!empty($data['summary'])) {
-				$summary = $data['summary']; // something with date start end??
+				$summary = $data['summary'];
+				if ($this->wire('languages') && strpos($data['summary'], '{"') === 0) {		
+					$langValues = json_decode($data['summary'], true);
+					$summary = $langValues[$this->wire('user')->language->id];
+					// fallback to default
+					if(!strlen($summary)) $summary = $langValues[$this->wire('languages')->getDefault()->id];
+				}
 			} else $summary = '';
 					
 			$summary = wire('sanitizer')->entities1($summary);
@@ -867,10 +927,26 @@ class ProcessPolls extends Process {
 
 		/** @var InputfieldText $f */
 		$f = $this->modules->get("InputfieldText");
+		$f->value = $data['title'];
+
+		if ($this->wire('languages')) {		
+			$f->useLanguages = true;
+			if (strpos($data['title'], '{"') === 0) {
+				$f->useLanguages = true;
+				$langValues = json_decode($data['title']);
+				foreach ($langValues as $langId => $langValue) {
+					if ($langId == $this->wire('languages')->getDefault()->id) {
+						$f->value = $langValue;
+					} else {
+						$f->{"value$langId"} = $langValue;
+					}
+				}
+			}
+		}
+
 		$f->label = $this->_('Title');
 		$f->required = true;
 		$f->name = 'title';
-		$f->value = $data['title'];
 		$f->columnWidth = 40;
 		$f->collapsed = $collapsed;
 		$form->add($f);
@@ -927,12 +1003,27 @@ class ProcessPolls extends Process {
 		/** @var InputfieldTextarea $f */
 		$f = $this->modules->get("InputfieldTextarea");
 		$f->label = $this->_('Summary');
+		$f->value = $data['summary'];
+
+		if ($this->wire('languages')) {		
+			$f->useLanguages = true;
+			if (strpos($data['summary'], '{"') === 0) {
+				$langValues = json_decode($data['summary']);
+				foreach ($langValues as $langId => $langValue) {
+					if ($langId == $this->wire('languages')->getDefault()->id) {
+						$f->value = $langValue;
+					} else {
+						$f->{"value$langId"} = $langValue;
+					}
+				}
+			}
+		};
+
 		// $f->required = true;
 		$f->maxlength = 1024;
 		$f->showCount = 1;
 		$f->description = $this->_('Short introduction to the poll / election displayed in the Polls / Elections list.');
 		$f->name = 'summary';
-		$f->value = $data['summary'];
 		$f->collapsed = $collapsed;
 		$form->add($f);
 
@@ -966,7 +1057,7 @@ class ProcessPolls extends Process {
 			$f->attr('value', 1);
 			$f->attr('checked', $data['anonymus'] ? 'checked' : '');
 			$f->label = $this->_('Hide for Monitors');
-			$f->description = $this->_('Hide this poll / elections in the list for users with role `poll-monitor` if participation is not granted.');
+			$f->description = sprintf($this->_('Hide this poll / election in the list for users with role %1$s if participation is not granted.'), "`poll-monitor`");
 			$f->columnWidth = 20;
 			$form->add($f);
 		}
@@ -1398,8 +1489,29 @@ class ProcessPolls extends Process {
 
 			$data = self::defaultData();
 			$show_pvc = 0;
+
+			$titleLang = [];
+			$summaryLang = [];
+			$defaultLangId = $this->wire('languages')->getDefault()->id;
+
 			foreach ($data as $name => $value) {
 				if (in_array($name, ['require_token','anonymus','show_pvc']) && $this->input->post->$name) $show_pvc++;
+				// language value and multi language enabled?
+				if(in_array($name, ['title','summary']) && $this->wire('languages')) {
+					foreach ($this->wire('languages') as $lang) {
+						if ($lang->isDefault() && $this->input->post->$name) {
+							$langValue = $this->input->post->$name;
+						}
+						else if ($this->input->post->{"{$name}__$lang->id"}) {
+							$langValue = $this->input->post->{"{$name}__$lang->id"};
+						}
+						else $langValue = $value;
+						${"{$name}Lang"}[$lang->id] = $langValue;
+					}
+					$query->bindValue(":$name", json_encode(${"{$name}Lang"}));
+					continue;
+				}
+				// other stuff
 				if ($this->input->post->$name) $query->bindValue(":$name", $this->input->post->$name);
 				else $query->bindValue(":$name", $value);
 			}
