@@ -596,6 +596,12 @@ class ProcessPolls extends Process {
 		$this->form->status = 1 + 2048; // active +  unpublished
 		$this->form->submitValue = $this->_('Submit'); // default button label for save / submit
 
+		// editable?
+		if (!empty($data['selector']) && !$data['require_token'] && !$data['anonymus']) {
+			$this->form->submitValue = $this->_('Save'); 
+			$this->form->showSubmitInHeader = true;
+		}
+
 		// display preview form see below
 		if (($this->isAdmin || $this->isMonitor) && !empty(wire('input')->get->preview)) {
 			$this->form->successMessage = '';
@@ -613,12 +619,6 @@ class ProcessPolls extends Process {
 		if (wire('config')->admin && !empty($data['selector'])) {
 			$allowedUsers = wire('users')->findIDs($data['selector']);
 			if (!in_array($userID, $allowedUsers)) throw new ProcessControllerPermissionException($this->_('Permission to participate in poll / election not granted.'));
-
-			// editable?
-			if (!$data['require_token'] && !$data['anonymus']) {
-				$this->form->submitValue = $this->_('Save'); 
-				$this->form->showSubmitInHeader = true;
-			}
 		}
 
 		// check date range
