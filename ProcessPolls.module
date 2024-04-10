@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.2.2 2024-03-08
+ * @version 1.2.3 2024-04-10
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -42,6 +42,7 @@
  * @since 1.2.0 - added language support for 'title' and 'summary' - 2023-06-15
  * @since 1.2.1 - fixed bug: language support for 'title' and 'summary' - 2023-06-21
  * @since 1.2.2 - switch submit / save label if poll is editable (backend only) - 2024-03-08
+ * @since 1.2.3 - bug fix: hide poll in list for monitors if participation not granted OR poll is over AND hide_in_list checked - 2024-04-10
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -53,7 +54,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 122, 
+			'version' => 123, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -798,8 +799,8 @@ class ProcessPolls extends Process {
 				$allowedUsers = wire('users')->findIDs($data['selector']);
 				if (!$this->isAdmin && !$this->isMonitor && !in_array($userID, $allowedUsers)) continue;
 			}
-			// hidden for monitors if participation not granted and hide_in_list checked
-			if (!$this->isAdmin && $this->isMonitor && $data['hide_in_list'] && !in_array($userID, $allowedUsers)) continue;
+			// hidden for monitors if participation not granted OR poll is over AND hide_in_list checked
+			if (!$this->isAdmin && $this->isMonitor && $data['hide_in_list'] && (!in_array($userID, $allowedUsers) || $data['tsEnd'] < time())) continue;
 		
 			$dtClass = $settings['dtClass'];
 			$ddClass = $settings['ddClass'];
@@ -1014,7 +1015,7 @@ class ProcessPolls extends Process {
 		/** @var InputfieldTextarea $f */
 		$f = $this->modules->get("InputfieldTextarea");
 		$f->label = $this->_('Summary');
-		$f->value = $data['summary'];
+		$f->value = $collapsed? strip_tags($data['summary']);
 
 		if ($this->wire('languages')) {		
 			$f->useLanguages = true;
