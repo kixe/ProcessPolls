@@ -1015,7 +1015,7 @@ class ProcessPolls extends Process {
 		/** @var InputfieldTextarea $f */
 		$f = $this->modules->get("InputfieldTextarea");
 		$f->label = $this->_('Summary');
-		$f->value = $collapsed? strip_tags($data['summary']);
+		$f->value = $collapsed? strip_tags($data['summary']) : $data['summary'];
 
 		if ($this->wire('languages')) {		
 			$f->useLanguages = true;
