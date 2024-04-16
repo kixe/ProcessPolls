@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.2.3 2024-04-10
+ * @version 1.2.4 2024-04-14
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -43,6 +43,7 @@
  * @since 1.2.1 - fixed bug: language support for 'title' and 'summary' - 2023-06-21
  * @since 1.2.2 - switch submit / save label if poll is editable (backend only) - 2024-03-08
  * @since 1.2.3 - bug fix: hide poll in list for monitors if participation not granted OR poll is over AND hide_in_list checked - 2024-04-10
+ * @since 1.2.4 - Update table process_poll_token made columns `pages_id`, `user_id` unique - 2024-04-14
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -54,7 +55,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 123, 
+			'version' => 124, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -347,8 +348,13 @@ class ProcessPolls extends Process {
 			}
 		}
 		$data = $this->polls[$this->id];
+
 		// export allowed for non superusers only after poll / election has been terminated
-		if (!$this->isAdmin && $data['tsEnd'] > time()) {
+		// check date range
+		if(!$this->isAdmin && $data['tsStart'] > time()) {
+			throw new WireException(sprintf($this->_('This poll / election has not started yet. The results can only be exported after the poll / election has been terminated on %s.'), $data['dateEnd']));
+		}
+		else if (!$this->isAdmin && $data['tsEnd'] > time()) {
 			throw new WireException(sprintf($this->_('This poll / election is active and ends on %s (00:00). The results can only be exported after the poll / election has been terminated.'), $data['dateEnd']));
 		} 
 
@@ -654,11 +660,19 @@ class ProcessPolls extends Process {
 				// redirect to parent page
 				wire('session')->redirect('../');
 			}
+
 			$token = wire('sanitizer')->alphanumeric($this->input->get('token'));
 
 			// has current user already participated in the poll or is already a token in DB assigned to this user?
 			$userToken = $this->getTokenByUser($this->id, $userID);
+
 			if (!empty($userToken['used'])) {
+
+				// token exists and is used but IP is not set: DB manipulation
+				if (empty($userToken['ip'])) {
+					throw new WireException('Database manipulation error. Token is marked as used without an IP address having been assigned.');
+				}	
+
 				$return = "<p>" . $this->_('You have already taken part in this poll / election. Multiple participation is not permitted. Your participation has been registered as follows.') . "</p>" . $this->buildTokenTable([$userToken]);
 				if ($data['anonymus']) $return .= "<p>" . $this->_('Your opinion or vote was saved anonymously regardless of the participation registration.') . "</p>";
 				return $return;
@@ -1192,6 +1206,12 @@ class ProcessPolls extends Process {
 	 */
 	private function isValidToken($token, $countInvalidRequests = true) {	
 		$data = $this->getDataArray("SELECT used, user_id, INET6_NTOA(UNHEX(ip)) FROM process_poll_token WHERE token='$token' AND pages_id='$this->id' LIMIT 1;");
+
+		// token exists not used but IP is set: DB manipulation
+		if (!empty($data[0]) && empty($data[0]['used']) && !empty($data[0]['ip'])) {
+			throw new WireException('Database manipulation error. Token is marked as unused with an IP address having been assigned.');
+		}
+
 		// token exists and has not been used yet
 		if (!empty($data[0]) && empty($data[0]['used'])) {		
 			if (!empty($data[0]['user_id'])) return $data[0]['user_id'];
@@ -1238,13 +1258,15 @@ class ProcessPolls extends Process {
 	}
 
 	/**
-	 * Invalidate a used token, set used, user_id, IP-Adress
+	 * Invalidate a token, set used, user_id, IP-Adress
+	 * function ignores
+	 * 
 	 * @param string $token
 	 * @return bool
 	 *
 	 */
 	private function invalidateToken($token) {
-		$sql = "UPDATE process_poll_token SET used=1, user_id=:user_id, ip=HEX(INET6_ATON(:ip)) WHERE token=:token AND used IS NULL AND (user_id IS NULL OR user_id=:user_id) AND (ip IS NULL OR ip='') LIMIT 1;";
+		$sql = "UPDATE process_poll_token SET used=1, user_id=:user_id, ip=HEX(INET6_ATON(:ip)) WHERE token=:token AND (ip IS NULL OR ip='' OR used IS NULL) AND (user_id IS NULL OR user_id=:user_id) LIMIT 1;";
 		$sth = wire('database')->prepare($sql);
 		$sth->bindValue(":ip", wire('session')->getIP());
 		$sth->bindValue(":user_id", wire('user')->id);
@@ -1589,7 +1611,8 @@ class ProcessPolls extends Process {
 			`used` BIT(1),
 			`user_id` int UNSIGNED COMMENT 'Used by user with ID',
 			`ip` VARBINARY(16),
-			PRIMARY KEY (`token`)
+			PRIMARY KEY (`token`),
+			UNIQUE (`pages_id`, `user_id`)
 		) ENGINE=$engine DEFAULT CHARSET=ascii;
 _END;
 		$this->database->query($sql);
