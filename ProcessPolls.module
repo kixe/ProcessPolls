@@ -1291,7 +1291,7 @@ class ProcessPolls extends Process {
 	 * @return bool
 	 *
 	 */
-	private function deleteTokens($token, ) {
+	private function deleteTokens($token) {
 		// delete all
 		if ($token === true && $this->id) {
 			$sql = "DELETE FROM process_poll_token WHERE pages_id=:id;";
