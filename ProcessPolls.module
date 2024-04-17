@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.2.6 2024-04-17
+ * @version 1.2.7 2024-04-17
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -46,6 +46,7 @@
  * @since 1.2.4 - Update table process_poll_token made columns `pages_id`, `user_id` unique - 2024-04-14
  * @since 1.2.5 - Added option to export token table - 2024-04-16
  * @since 1.2.6 - Added uk-badge-danger and uk-badge-success classes to uk-badge. Feel free to add colors in your custom admin theme - 2024-04-17
+ * @since 1.2.7 - Update: direct linking to participation screen is possible without token in URL now - 2024-04-17
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -57,7 +58,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 126, 
+			'version' => 127, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -698,15 +699,14 @@ class ProcessPolls extends Process {
 
 		// token required?
 		if ($data['require_token']) {
-			// URL manipulation
-			if (empty($this->input->get('login')) && empty($this->input->get('token'))) throw new WireException($this->_('Missing GET parameter: token'));
-			else if (empty($this->input->get('token'))) {
-				// can happen after session has been expired and re-login is initiated
-				// GET-Param: token will be removed by ProcessLogin::determineAfterLoginUrl() in this case
-				// redirect to parent page
+			// can happen after session has been expired and re-login is initiated
+			// GET-Param: token will be removed by ProcessLogin::determineAfterLoginUrl() in this case assign token
+			if (empty($this->input->get('token'))) {
+				$url = $this->getProcessPage()->url . "participate/?id=$parent->id&token=" . $this->getUserToken($data);
+				wire('session')->redirect($url);
+			} else if ($this->input->get('token') == '~') {
 				wire('session')->redirect('../');
 			}
-
 			$token = wire('sanitizer')->alphanumeric($this->input->get('token'));
 
 			// has current user already participated in the poll or is already a token in DB assigned to this user?
@@ -718,7 +718,6 @@ class ProcessPolls extends Process {
 				if (empty($userToken['ip'])) {
 					throw new WireException('Database manipulation error. Token is marked as used without an IP address having been assigned.');
 				}	
-
 				$return = "<p>" . $this->_('You have already taken part in this poll / election. Multiple participation is not permitted. Your participation has been registered as follows.') . "</p>" . $this->buildTokenTable([$userToken]);
 				if ($data['anonymus']) $return .= "<p>" . $this->_('Your opinion or vote was saved anonymously regardless of the participation registration.') . "</p>";
 				return $return;
@@ -917,23 +916,7 @@ class ProcessPolls extends Process {
 			$url = $this->getProcessPage()->url . "participate/?id=$parent->id";
 
 			if ($data['require_token']) {
-				// check if user has already assigned a token, provide same user token to get the right messages after click
-				$userToken = $this->getTokenByUser($parent->id, wire('user')->id);		
-				if (!empty($userToken['token'])) {
-					$url .= '&amp;token=' . $userToken['token'];
-				}
-
-				// get unused token or add token generated on-the-fly if user is allowed to participate
-				// NOTE: does not work for admin if not allowed by selector
-				else if (empty($data['selector']) || (!empty($data['selector']) && in_array($userID, $allowedUsers))) {
-					$unusedTokens = $this->getTokens($parent->id, 1, 0, true);
-					if (count($unusedTokens)) {
-						$token = $unusedTokens[0]['token'];
-						$this->assignToken($token);
-					}
-					else $token = $this->createTokens($parent->id, wire('user')->id)[0];
-					$url .= '&amp;token=' . $token;
-				}
+				$url .= '&amp;token=' . $this->getUserToken($data);
 			}
 
 			// admin buttons
@@ -1277,6 +1260,32 @@ class ProcessPolls extends Process {
 		if ($countInvalidRequests === false) return false;
 		if (!$this->countInvalidRequests()) throw new WireException('The number of unauthorized requests (usage of invalid token) has been exceeded.');
 		return false;
+	}
+
+	/**
+	 * get user token, assign if not already assigned
+	 * @param array $pollData array related to a specific poll
+	 * @return string 
+	 *
+	 */
+	private function getUserToken($pollData) {
+		$token = '~';
+		$allowedUsers = wire('users')->findIDs($pollData['selector']);
+		$userID = wire('user')->id;
+		// check if user has already assigned a token, provide same user token to get the right messages after click
+		$userToken = $this->getTokenByUser($pollData['pages_id'], $userID);		
+		if (!empty($userToken['token'])) $token = $userToken['token'];
+		// get unused token or add token generated on-the-fly if user is allowed to participate
+		// NOTE: does not work for admin if not allowed by selector
+		else if (empty($pollData['selector']) || (!empty($pollData['selector']) && in_array($userID, $allowedUsers))) {
+			$unusedTokens = $this->getTokens($pollData['pages_id'], 1, 0, true);
+			if (count($unusedTokens)) {
+				$token = $unusedTokens[0]['token'];
+				$this->assignToken($token);
+			}
+			else $token = $this->createTokens($pollData['pages_id'], $userID)[0];
+		}
+		return $token;
 	}
 
 	/**
