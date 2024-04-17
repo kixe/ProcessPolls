@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.2.5 2024-04-16
+ * @version 1.2.6 2024-04-17
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -45,6 +45,7 @@
  * @since 1.2.3 - bug fix: hide poll in list for monitors if participation not granted OR poll is over AND hide_in_list checked - 2024-04-10
  * @since 1.2.4 - Update table process_poll_token made columns `pages_id`, `user_id` unique - 2024-04-14
  * @since 1.2.5 - Added option to export token table - 2024-04-16
+ * @since 1.2.6 - Added uk-badge-danger and uk-badge-success classes to uk-badge. Feel free to add colors in your custom admin theme - 2024-04-17
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -56,7 +57,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 125, 
+			'version' => 126, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -838,20 +839,26 @@ class ProcessPolls extends Process {
 				$info = sprintf($this->_('This poll / election is active and ends on %s (00:00). Participation is no longer possible after this date.'), $data['dateEnd']);
 			}
 
+			$numVotes = $parent->children('include=all,template=' . $data['template'])->count();
+			$labelVotes = $this->_('Participation / Number of votes');
+
+			$numTokens = $this->getNumTokens($parent->id);
+			$labelTotal = $this->_('total');
+			$labelAssigned = $this->_('assigned');
+			$labelUsed = $this->_('used');
+			$labelTokens = $this->_('Tokens');
+			$labelUsedAssigned = $this->_('assigned & used');
+
+			$numWarningClass = '';
+			if ($data['require_token'] && $numVotes && ($numTokens['usedAssigned'] != $numVotes || $numTokens['used'] != $numVotes || $numTokens['used'] != $numTokens['usedAssigned'])) $numWarningClass = ' uk-badge-danger';
+			else if ($data['require_token'] && $numVotes) $numWarningClass = ' uk-badge-success';
+
 			if ($this->isMonitor) {
-				$numVotes = $parent->children('include=all,template=' . $data['template'])->count();
-				$labelVotes = $this->_('Participation / Voter turnout');
-				$info .= "<br><strong>$labelVotes:</strong> <span class='uk-badge'>$numVotes</span>";
+				$info .= "<br><strong>$labelVotes:</strong> <span class='uk-badge$numWarningClass'>$numVotes</span>";
 			}
 
 			if ($data['require_token'] && $this->isAdmin) {
-				$numTokens = $this->getNumTokens($parent->id);
-				$labelTotal = $this->_('total');
-				$labelAssigned = $this->_('assigned');
-				$labelUsed = $this->_('used');
-				$labelTokens = $this->_('Tokens');
-				$labelUsedAssigned = $this->_('assigned & used');
-					$info .= "<br><strong>$labelTokens:</strong> <span class='uk-badge'>$numTokens[total]</span> <span class='uk-text-meta'>$labelTotal</span> <span class='uk-badge'>$numTokens[assigned]</span> <span class='uk-text-meta'>$labelAssigned</span> <span class='uk-badge'>$numTokens[used]</span> <span class='uk-text-meta'>$labelUsed</span> <span class='uk-badge'>$numTokens[usedAssigned]</span> <span class='uk-text-meta'>$labelUsedAssigned</span>";
+					$info .= "<br><strong>$labelTokens:</strong> <span class='uk-badge'>$numTokens[total]</span> <span class='uk-text-meta'>$labelTotal</span> <span class='uk-badge'>$numTokens[assigned]</span> <span class='uk-text-meta'>$labelAssigned</span> <span class='uk-badge$numWarningClass'>$numTokens[used]</span> <span class='uk-text-meta'>$labelUsed</span> <span class='uk-badge$numWarningClass'>$numTokens[usedAssigned]</span> <span class='uk-text-meta'>$labelUsedAssigned</span>";
 			}
 		
 			// check access
