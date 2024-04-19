@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.2.7 2024-04-17
+ * @version 1.2.8 2024-04-19
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -47,6 +47,7 @@
  * @since 1.2.5 - Added option to export token table - 2024-04-16
  * @since 1.2.6 - Added uk-badge-danger and uk-badge-success classes to uk-badge. Feel free to add colors in your custom admin theme - 2024-04-17
  * @since 1.2.7 - Update: direct linking to participation screen is possible without token in URL now - 2024-04-17
+ * @since 1.2.8 - Update: disable property allow_export_user_fields in ProcessExportPagesCSV if anonymus, added hookable functions to modify export of data and token list, update functions for translations, create always 5 new tokens and assign randomly to make stored data more anonymus. - 2024-04-19
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -58,14 +59,14 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 127, 
+			'version' => 128, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
 			'permissionMethod' => 'checkAccess',
 			'permissions' => array('poll-view' => 'Participate in a poll or election', 'poll-monitor' => 'View details of polls without editing rights', 'poll-admin' => 'Add, edit, delete polls'),
 			'author' => 'kixe',
-			'requires' => array('ProcessExportPagesCSV','FormProcessor','ProcessWire>=3.0.163'),
+			'requires' => array('ProcessExportPagesCSV>=1.0.6','FormProcessor>=1.1.6','ProcessWire>=3.0.163'),
 			'installs'  => array('ProcessExportPagesCSV','FormProcessor'),
   			'icon' => 'puzzle-piece'
 		);
@@ -193,12 +194,12 @@ class ProcessPolls extends Process {
 				$f->attr('value', $this->id);
 				$f->attr('data-user-id', wire('user')->id);
 				$copPage = wire('pages')->get($data['cop_id']);
-				$copTargetLabel = __('conditions of participation');
+				$copTargetLabel = $this->_('conditions of participation');
 				$copTarget = strpos($copPage->url, '?')? "$copPage->url&amp;modal=1" : "$copPage->url?modal=1";
 				$copLinkMarkup = "<span><a class='pw-modal' href='$copTarget'>$copTargetLabel</a></span>";
-				$f->attr('data-label-confirmed', sprintf(__('I confirmed the %2$s for this poll / election on this device on %1$s.'), '{date}', $copLinkMarkup));
+				$f->attr('data-label-confirmed', sprintf($this->_('I confirmed the %2$s for this poll / election on this device on %1$s.'), '{date}', $copLinkMarkup));
 				$f->required = true;
-				$f->label = sprintf(__('I agree to the %1$s.'), $copLinkMarkup);
+				$f->label = sprintf($this->_('I agree to the %1$s.'), $copLinkMarkup);
 
 				// $f->set('textFormat', 8);
 				// $f->set('entityEncodeText', false);
@@ -207,7 +208,7 @@ class ProcessPolls extends Process {
         		// $f->entityEncodeText = Inputfield::textFormatMarkdown;
         		// $f->textFormat = Inputfield::textFormatMarkdown;
 				$e->return->insertBefore($f, $e->return->get('submit'));
-				$e->return->get('submit')->attr('data-title-disabled', __('Please confirm the conditions of participation first.'));
+				$e->return->get('submit')->attr('data-title-disabled', $this->_('Please confirm the conditions of participation first.'));
 			});
 		}
 
@@ -227,7 +228,7 @@ class ProcessPolls extends Process {
 
 			// preview / sandbox mode
 			if (!empty(wire('input')->get->preview) || $e->object->sandbox === true) {
-				$this->warning( __('Sandbox mode. Submitting the form has no effect.'));
+				$this->warning( $this->_('Sandbox mode. Submitting the form has no effect.'));
 				$e->return = false;
 				return;
 			}
@@ -252,7 +253,7 @@ class ProcessPolls extends Process {
 
 			if (!empty($errors)) {
 				$errors = implode(', ', $errors);
-				$this->error( __("Processing Error") . " [$errors]");
+				$this->error( $this->_("Processing Error") . " [$errors]");
 				wire('log')->save('polls-error', "Hook in FormProcessor::validator failed: [$errors].");
 				$e->return = false;				
 			}
@@ -283,14 +284,14 @@ class ProcessPolls extends Process {
 
 			if (!empty($errors)) {
 				$errors = implode(', ', $errors);
-				$this->error( __("Processing Error") . " [$errors]");
+				$this->error( $this->_("Processing Error") . " [$errors]");
 				wire('log')->save('polls-error', "Hook in FormProcessor::success failed [$errors]. Unable to invalidate token: $token_by_post. Page [#$vote->id] has been created.");			
 			}
 			else if (!$this->invalidateToken($token_by_post)) {
-				$this->error( __("Processing Error") . " [8]");
+				$this->error( _("Processing Error") . " [8]");
 				wire('log')->save('polls-error', "Hook in FormProcessor::success failed. Unable to invalidate token: $token_by_post. Page [#$vote->id] has been created.");
 			} else {
-				$message = __("Your opinion / vote has been submitted successfully!");
+				$message = $this->_("Your opinion / vote has been submitted successfully!");
 				if ($data['show_pvc'] === '1' && $data['require_token'] === '1' && $data['anonymus'] === '1') {
 					$message .= " PVC-$vote->id-$vote->created-$token_by_post";
 				}
@@ -312,7 +313,7 @@ class ProcessPolls extends Process {
 		$this->form = new FormProcessor();
 		$this->form->init();
 		if (!empty($data) && $data['require_token'] === '1') {
-			$this->form->confirmText = __('Are you sure you want to submit the form? Changes to your entries are then no longer possible!');
+			$this->form->confirmText = $this->_('Are you sure you want to submit the form? Changes to your entries are then no longer possible!');
 		}
 	}
 	
@@ -364,6 +365,7 @@ class ProcessPolls extends Process {
 		$exportCSV = wire('modules')->get('ProcessExportPagesCSV');
 		$this->headline($this->_("Export Poll or Election"));
 		$this->fuel->breadcrumbs->add(new Breadcrumb('../', $this->_('Polls & Elections')));
+		if ($data['anonymus']) $exportCSV->allow_export_user_fields = false; // guest user
 		$exportCSV->export_selector_init = "include=all,parent=$this->id,template=$data[template]";
 		// $exportCSV->exportSelectorFields = ['poll_test_radio_1']; // if enabled only these
 		// $exportColumns = ['ID' => 'id','NAME' => 'name', 'DATETIME' => 'created'];
@@ -377,7 +379,7 @@ class ProcessPolls extends Process {
 			if (!wire('user')->language->isDefault()) $key = 'label' . wire('user')->language->id . '|label|name';
 			$exportColumns[$f->get($key)] = $f->name;
 		}
-		$exportCSV->exportColumns = $exportColumns;
+		$exportCSV->exportColumns = $this->modifyDataExportColumns($exportColumns);
 		return $exportCSV->render();
 	}
 
@@ -422,7 +424,35 @@ class ProcessPolls extends Process {
 		// direct output
 		$exportCSV = wire('modules')->get('ProcessExportPagesCSV');
 		$tokens = $this->getTokens($this->id, PHP_INT_MAX);
+		$tokens = $this->modifyTokenExport($tokens);
 		$exportCSV->export($tokens, "tokens-$this->id");
+	}
+
+	/**
+	 * hookable function to modify export columns 
+	 * @see executeExport()
+	 * @see ProcessExportPagesCSV::exportColumns
+	 * 
+	 * @param array $exportColumns ['DATETIME (created)' => 'createdStr', // ... ]
+	 * @return array $exportColumns
+	 * 
+	 */
+	protected function ___modifyDataExportColumns($exportColumns) {
+		return $exportColumns;
+	}
+
+	/**
+	 * hookable function to modify token export array
+	 * @see executeExportParticipation()
+	 * @see ProcessExportPagesCSV::export()
+	 * 
+	 * @param array $tokens
+	 * e.g. ['pages_id' => 12345, 'token' => 'AbCdE9', 'used' => NULL, 'user_id' => NULL, 'ip' => NULL]
+	 * @return array $tokens
+	 * 
+	 */
+	protected function ___modifyTokenExport($tokens) {
+		return $tokens;
 	}
 
 	/**
@@ -1021,7 +1051,7 @@ class ProcessPolls extends Process {
 		$f = wire('modules')->get('InputfieldDatetime');
 		$f->attr('name', 'start');
 		$f->attr('value', $data['start']);
-		$f->label = __('Start');
+		$f->label = $this->_('Start');
 		$f->required = true;
 		$f->icon = 'calendar';
 		$f->columnWidth = 20; 
@@ -1036,7 +1066,7 @@ class ProcessPolls extends Process {
 		$f->attr('name', 'end');
 		$f->attr('value', $data['end']);
 		$f->icon = 'calendar';
-		$f->label = __('End');
+		$f->label = $this->_('End');
 		$f->required = true;
 		$f->columnWidth = 20;
 		$f->datepicker = InputfieldDatetime::datepickerFocus;
@@ -1051,7 +1081,7 @@ class ProcessPolls extends Process {
 		$f->attr('value', $data['template']);
 		$f->required = true;
 		$f->columnWidth = 20;
-		$f->label = __('Template');
+		$f->label = $this->_('Template');
 		$f->description = $this->_('Template in which the fields for the poll / election form lives in.');
 		$f->icon = 'cubes';
 
@@ -1275,15 +1305,23 @@ class ProcessPolls extends Process {
 		// check if user has already assigned a token, provide same user token to get the right messages after click
 		$userToken = $this->getTokenByUser($pollData['pages_id'], $userID);		
 		if (!empty($userToken['token'])) $token = $userToken['token'];
-		// get unused token or add token generated on-the-fly if user is allowed to participate
+		// get unused random token or add token generated on-the-fly if user is allowed to participate
 		// NOTE: does not work for admin if not allowed by selector
 		else if (empty($pollData['selector']) || (!empty($pollData['selector']) && in_array($userID, $allowedUsers))) {
+			// get random unused token
 			$unusedTokens = $this->getTokens($pollData['pages_id'], 1, 0, true);
 			if (count($unusedTokens)) {
 				$token = $unusedTokens[0]['token'];
 				$this->assignToken($token);
 			}
-			else $token = $this->createTokens($pollData['pages_id'], $userID)[0];
+			else {
+				// create 5 new tokens and recall this function to get random unused token
+				if($this->createTokens($pollData['pages_id'], null, 5)) {
+					return $this->getUserToken($pollData);
+				}
+				// create one and return
+				// $token = $this->createTokens($pollData['pages_id'], $userID)[0];
+			}
 		}
 		return $token;
 	}
@@ -1373,6 +1411,7 @@ class ProcessPolls extends Process {
 	 * 
 	 */
 	private function createTokens($poll, $user = null, $num = 1) {
+		if ($user) $num = 1;
 		$random = new WireRandom();
 		$tokens = [];
 		$values = [];
@@ -1407,6 +1446,7 @@ class ProcessPolls extends Process {
 	 */
 	private function getTokens($poll, $limit = self::MAX_NUM_TOKEN, $offset = 0, $unused = false) {
 		$filter = $unused? " AND used IS NULL AND user_id IS NULL AND (ip IS NULL OR ip='')" : '';
+		$filter .= $limit == 1? " ORDER BY RAND()" : ''; // select random
 		$sql = "SELECT pages_id, token, used, user_id, INET6_NTOA(UNHEX(ip)) FROM process_poll_token WHERE pages_id=$poll$filter LIMIT $offset, $limit;";
 		return $this->getDataArray($sql);
 	}
