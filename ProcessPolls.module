@@ -16,7 +16,7 @@
  *
  * @requires permission poll-view
  *
- * @version 1.2.8 2024-04-19
+ * @version 1.2.9 2024-04-19
  *
  * changelog
  * @since 1.0.0 - init - 2020-08-23
@@ -48,6 +48,7 @@
  * @since 1.2.6 - Added uk-badge-danger and uk-badge-success classes to uk-badge. Feel free to add colors in your custom admin theme - 2024-04-17
  * @since 1.2.7 - Update: direct linking to participation screen is possible without token in URL now - 2024-04-17
  * @since 1.2.8 - Update: disable property allow_export_user_fields in ProcessExportPagesCSV if anonymus, added hookable functions to modify export of data and token list, update functions for translations, create always 5 new tokens and assign randomly to make stored data more anonymus. - 2024-04-19
+ * @since 1.2.9 - Update: translatable WireException message - 2024-04-19
  * 
  * @todo add function to generate emails with tokens and links to this poll (pull emails from selector)
  *
@@ -59,7 +60,7 @@ class ProcessPolls extends Process {
 		return array(
 			'title' => __('Polls', __FILE__), // getModuleInfo title
 			'summary' => __('This module provides a backend process for collecting data via a form (FormProcessor). The data is saved as pages according to the predefined template and parent.', __FILE__), // getModuleInfo summary
-			'version' => 128, 
+			'version' => 129, 
 			'permanent' => false,
 			'autoload' => 'template=admin',
 			'permission' => 'poll-view',
@@ -418,7 +419,7 @@ class ProcessPolls extends Process {
 		else if (!$this->isAdmin && $data['tsEnd'] > time()) {
 			throw new WireException(sprintf($this->_('This poll / election is active and ends on %s (00:00). The participation table (tokens) can only be exported after the poll / election has been terminated.'), $data['dateEnd']));
 		} else if (!$data['require_token']) {
-			throw new WireException('This poll / election does not require a token.');
+			throw new WireException($this->_('This poll / election does not require a token.'));
 		}
 
 		// direct output
@@ -746,7 +747,7 @@ class ProcessPolls extends Process {
 
 				// token exists and is used but IP is not set: DB manipulation
 				if (empty($userToken['ip'])) {
-					throw new WireException('Database manipulation error. Token is marked as used without an IP address having been assigned.');
+					throw new WireException($this->_('Database manipulation error. Token is marked as used without an IP address having been assigned.'));
 				}	
 				$return = "<p>" . $this->_('You have already taken part in this poll / election. Multiple participation is not permitted. Your participation has been registered as follows.') . "</p>" . $this->buildTokenTable([$userToken]);
 				if ($data['anonymus']) $return .= "<p>" . $this->_('Your opinion or vote was saved anonymously regardless of the participation registration.') . "</p>";
@@ -1279,7 +1280,7 @@ class ProcessPolls extends Process {
 
 		// token exists not used but IP is set: DB manipulation
 		if (!empty($data[0]) && empty($data[0]['used']) && !empty($data[0]['ip'])) {
-			throw new WireException('Database manipulation error. Token is marked as unused with an IP address having been assigned.');
+			throw new WireException($this->_('Database manipulation error. Token is marked as unused with an IP address having been assigned.'));
 		}
 
 		// token exists and has not been used yet
@@ -1288,7 +1289,7 @@ class ProcessPolls extends Process {
 			return true;
 		}
 		if ($countInvalidRequests === false) return false;
-		if (!$this->countInvalidRequests()) throw new WireException('The number of unauthorized requests (usage of invalid token) has been exceeded.');
+		if (!$this->countInvalidRequests()) throw new WireException($this->_('The number of unauthorized requests (usage of invalid token) has been exceeded.'));
 		return false;
 	}
 
