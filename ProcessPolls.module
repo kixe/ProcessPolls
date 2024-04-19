@@ -67,7 +67,7 @@ class ProcessPolls extends Process {
 			'permissionMethod' => 'checkAccess',
 			'permissions' => array('poll-view' => 'Participate in a poll or election', 'poll-monitor' => 'View details of polls without editing rights', 'poll-admin' => 'Add, edit, delete polls'),
 			'author' => 'kixe',
-			'requires' => array('ProcessExportPagesCSV>=1.0.6','FormProcessor>=1.1.6','ProcessWire>=3.0.163'),
+			'requires' => array('ProcessExportPagesCSV>=1.0.7','FormProcessor>=1.1.6','ProcessWire>=3.0.163'),
 			'installs'  => array('ProcessExportPagesCSV','FormProcessor'),
   			'icon' => 'puzzle-piece'
 		);

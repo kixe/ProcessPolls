@@ -111,8 +111,8 @@ In a token-based poll or election, only one vote per user is possible. Voting is
 
 ### Requirements
 + **[ProcessWire](https://github.com/processwire/processwire)** >= 3.0.163
-+ **[FormProcessor](https://github.com/kixe/FormProcessor)**
-+ **[ProcessExportPagesCSV](https://github.com/kixe/ProcessExportPagesCSV)**
++ **[FormProcessor](https://github.com/kixe/FormProcessor)** >= 1.1.6
++ **[ProcessExportPagesCSV](https://github.com/kixe/ProcessExportPagesCSV)** >= 1.0.7
 
 ### Settings
 
