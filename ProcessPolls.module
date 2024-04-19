@@ -887,7 +887,7 @@ class ProcessPolls extends Process {
 				$info .= "<br><strong>$labelVotes:</strong> <span class='uk-badge$numWarningClass'>$numVotes</span>";
 			}
 
-			if ($data['require_token'] && $this->isAdmin) {
+			if ($data['require_token'] && ($this->isAdmin || $this->isMonitor)) {
 					$info .= "<br><strong>$labelTokens:</strong> <span class='uk-badge'>$numTokens[total]</span> <span class='uk-text-meta'>$labelTotal</span> <span class='uk-badge'>$numTokens[assigned]</span> <span class='uk-text-meta'>$labelAssigned</span> <span class='uk-badge$numWarningClass'>$numTokens[used]</span> <span class='uk-text-meta'>$labelUsed</span> <span class='uk-badge$numWarningClass'>$numTokens[usedAssigned]</span> <span class='uk-text-meta'>$labelUsedAssigned</span>";
 			}
 		
@@ -1205,7 +1205,7 @@ class ProcessPolls extends Process {
 		if (!$collapsed) $f->showIf = 'require_token=1,anonymus=1';
 		$form->add($f);
 
-		if ($this->isAdmin && $id) {
+		if (($this->isAdmin || $this->isMonitor)  && $id) {
 			$form->action = "./?id=$id";
 			$f = wire('modules')->get('InputfieldMarkup');
 			$f->label = $this->_('Tokens');
